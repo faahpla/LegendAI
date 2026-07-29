@@ -12,7 +12,7 @@ type EditorViewProps = {
   onOpen: () => void
   onDropSrt: (event: DragEvent<HTMLElement>) => void
   onSave: () => void
-  onToggle: (index: number) => void
+  onToggle: (index: number, extend?: boolean) => void
   onSplitPositionChange: (position: number | null) => void
   onMerge: () => void
   onSplit: () => void
@@ -33,13 +33,16 @@ export function EditorView({
   onMerge,
   onSplit
 }: EditorViewProps): JSX.Element {
-  const canSplit = selected.length === 1
-    && splitPosition !== null
-    && splitPosition > 0
-    && splitPosition < (cues[selected[0]]?.text.length ?? 0)
+  const splitTarget = selected.length === 1 ? cues[selected[0]]?.text ?? '' : ''
+  // As duas metades precisam ter texto após aparar espaços — mesma regra do motor.
+  const canSplit = splitPosition !== null
+    && Boolean(splitTarget.slice(0, splitPosition).trim())
+    && Boolean(splitTarget.slice(splitPosition).trim())
   const editorHint = selected.length === 1
     ? canSplit ? 'Ponto de corte selecionado.' : 'Clique entre as palavras para posicionar o corte.'
-    : notice
+    : selected.length > 1
+      ? `${selected.length} legendas em sequência — prontas para mesclar.`
+      : notice || 'Clique para selecionar; Shift+clique marca um intervalo.'
 
   return (
     <section
@@ -76,7 +79,7 @@ export function EditorView({
             {cues.map((cue, index) => (
               <div
                 key={`${cue.start}-${cue.end}-${index}`}
-                onClick={() => onToggle(index)}
+                onClick={(event) => onToggle(index, event.shiftKey)}
                 role="button"
                 tabIndex={0}
                 className={['flex w-full items-center gap-4 rounded-xl px-3 py-3 text-left transition-colors', selected.includes(index) ? 'bg-primary/10 text-foreground' : 'hover:bg-surface-hover'].join(' ')}

@@ -56,7 +56,18 @@ function NumberField({ label, suffix, value, onChange }: { label: string; suffix
     <label>
       <span className="mb-2 block text-xs text-muted-foreground">{label}</span>
       <span className="control flex h-10 items-center px-3">
-        <input value={value} type="number" step="any" onChange={(event) => onChange(Number(event.target.value))} className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
+        <input
+          value={value}
+          type="number"
+          step="any"
+          min="0"
+          onChange={(event) => {
+            // Campo vazio/inválido vira NaN -> null no JSON -> TypeError no motor.
+            const parsed = Number(event.target.value)
+            onChange(Number.isFinite(parsed) && parsed >= 0 ? parsed : 0)
+          }}
+          className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+        />
         <span className="text-xs text-muted-foreground">{suffix}</span>
       </span>
     </label>

@@ -11,6 +11,9 @@ import { fallbackSettings } from '@/types'
 type OpenSrtResult = { path: string; cues: Cue[] }
 type CuesResult = { cues: Cue[] }
 
+/** Mesmas extensões oferecidas pelo seletor de arquivos do processo principal. */
+const AUDIO_EXTENSIONS = ['.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg']
+
 export default function App(): JSX.Element {
   const [view, setView] = useState<View>('create')
   const [audioPath, setAudioPath] = useState<string | null>(null)
@@ -90,6 +93,12 @@ export default function App(): JSX.Element {
     try {
       const path = file.path || window.legendAI.filePath(file)
       if (!path) throw new Error('Caminho do arquivo não disponível.')
+      // O backend só confere se o arquivo existe; sem esta validação um vídeo
+      // ou texto solto viraria uma geração que falha lá no fundo do alinhador.
+      if (!AUDIO_EXTENSIONS.some((extension) => path.toLowerCase().endsWith(extension))) {
+        setCreateNotice(`Formato não suportado. Use ${AUDIO_EXTENSIONS.join(', ')}.`)
+        return
+      }
       setAudioPath(path)
       setCreateNotice('Áudio selecionado.')
     } catch (error) {
@@ -161,10 +170,33 @@ export default function App(): JSX.Element {
     }
   }
 
-  function toggleCue(index: number): void {
-    setSelected((current) => current.includes(index)
-      ? current.filter((item) => item !== index)
-      : [...current, index].sort((left, right) => left - right))
+  /**
+   * Alterna a seleção mantendo-a sempre contígua — mesclar só aceita legendas
+   * consecutivas, então nem deixamos o usuário montar um conjunto inválido.
+   *
+   * - Shift+clique: seleciona o intervalo inteiro a partir da âncora.
+   * - Clique vizinho ao bloco atual: estende o bloco.
+   * - Clique nas bordas do bloco: encolhe.
+   * - Clique longe (ou no meio do bloco): recomeça a seleção ali.
+   */
+  function toggleCue(index: number, extend = false): void {
+    setSelected((current) => {
+      if (extend && current.length > 0) {
+        const anchor = current[0]
+        const [low, high] = anchor <= index ? [anchor, index] : [index, anchor]
+        return Array.from({ length: high - low + 1 }, (_, offset) => low + offset)
+      }
+      if (current.length === 0) return [index]
+      const first = current[0]
+      const last = current[current.length - 1]
+      if (index === first && current.length === 1) return []
+      if (index === first) return current.slice(1)
+      if (index === last) return current.slice(0, -1)
+      if (index === first - 1 || index === last + 1) {
+        return [...current, index].sort((left, right) => left - right)
+      }
+      return [index]
+    })
     setSplitPosition(null)
   }
 
@@ -188,7 +220,9 @@ export default function App(): JSX.Element {
     if (selected.length !== 1) return
     const position = splitPosition
     const cue = cues[selected[0]]
-    if (position === null || position < 1 || position >= cue.text.length) {
+    // Espelha a regra do motor: as duas metades precisam sobrar com texto real,
+    // senão um corte dentro de um espaço passaria daqui e quebraria no backend.
+    if (position === null || !cue.text.slice(0, position).trim() || !cue.text.slice(position).trim()) {
       setEditorNotice('Clique entre duas palavras antes de dividir.')
       return
     }
@@ -265,5 +299,11 @@ function fileName(path: string | null): string | undefined {
 }
 
 function messageFrom(error: unknown): string {
-  return error instanceof Error ? error.message : 'Ocorreu um erro inesperado.'
+  if (!(error instanceof Error)) return 'Ocorreu um erro inesperado.'
+  // O IPC do Electron prefixa a mensagem original ("Error invoking remote
+  // method 'backend:request': Error: ..."); mostramos só o texto útil.
+  return error.message
+    .replace(/^Error invoking remote method '[^']*':\s*/, '')
+    .replace(/^Error:\s*/, '')
+    .trim() || 'Ocorreu um erro inesperado.'
 }
