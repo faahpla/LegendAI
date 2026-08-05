@@ -35,6 +35,7 @@
   "build": {
     "appId": "com.faah.legendai",
     "productName": "LegendAI",
+    "afterPack": "./scripts/after-pack.js",
     "directories": {
       "output": "release-electron"
     },
