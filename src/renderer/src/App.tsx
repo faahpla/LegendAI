@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
-import { HelpCircle, Maximize2, Minus, Settings2, Sparkles, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Clock, Download, HelpCircle, Maximize2, Minus, Settings2, X } from 'lucide-react'
 import logoUrl from './assets/legendai-logo.png'
 import { CreateView } from '@/features/create-view'
 import { EditorView } from '@/features/editor-view'
+import { HelpView } from '@/features/help-view'
+import { HistoryView } from '@/features/history-view'
 import { SettingsView } from '@/features/settings-view'
 import { request } from '@/lib/backend'
-import type { Cue, EngineSettings, GenerationJob, View } from '@/types'
+import type { Cue, EngineSettings, GenerationJob, HistoryEntry, UpdateInfo, View } from '@/types'
 import { fallbackSettings } from '@/types'
 
 type OpenSrtResult = { path: string; cues: Cue[] }
@@ -29,8 +31,16 @@ export default function App(): JSX.Element {
   const [splitPosition, setSplitPosition] = useState<number | null>(null)
   const [editorNotice, setEditorNotice] = useState('Abra um SRT para começar.')
   const [editorBusy, setEditorBusy] = useState(false)
+  // Pilhas de desfazer/refazer do editor: cada entrada é um retrato das legendas.
+  const [past, setPast] = useState<Cue[][]>([])
+  const [future, setFuture] = useState<Cue[][]>([])
+  const [history, setHistory] = useState<HistoryEntry[]>([])
+  const [update, setUpdate] = useState<UpdateInfo>({ status: 'idle' })
+  const [appVersion, setAppVersion] = useState('—')
+  const [engineVersion, setEngineVersion] = useState('—')
 
   const audioName = useMemo(() => fileName(audioPath), [audioPath])
+  const isGenerating = Boolean(job && ['queued', 'running'].includes(job.status))
 
   useEffect(() => {
     let cancelled = false
@@ -54,6 +64,33 @@ export default function App(): JSX.Element {
     return () => { cancelled = true }
   }, [])
 
+  // Versão do app (Electron) e do motor (Python), exibidas na Ajuda.
+  useEffect(() => {
+    void window.legendAI.appVersion().then(setAppVersion).catch(() => undefined)
+    void request<{ version: string }>('/version')
+      .then((data) => setEngineVersion(data.version))
+      .catch(() => undefined)
+  }, [])
+
+  // Estado do auto-update: pega o atual e escuta as mudanças.
+  useEffect(() => {
+    void window.legendAI.currentUpdate<UpdateInfo>().then(setUpdate).catch(() => undefined)
+    return window.legendAI.onUpdateState((state) => setUpdate(state as UpdateInfo))
+  }, [])
+
+  const loadHistory = useCallback(async (): Promise<void> => {
+    try {
+      const data = await request<{ entries: HistoryEntry[] }>('/history')
+      setHistory(data.entries)
+    } catch {
+      // histórico é acessório: silenciar falha de leitura
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadHistory()
+  }, [loadHistory])
+
   useEffect(() => {
     if (!job || !['queued', 'running'].includes(job.status)) return
     let cancelled = false
@@ -63,6 +100,7 @@ export default function App(): JSX.Element {
         if (cancelled) return
         setJob(current)
         setCreateNotice(current.error ?? current.message)
+        if (current.status === 'completed') void loadHistory()
       } catch (error) {
         if (!cancelled) {
           setJob(null)
@@ -122,6 +160,61 @@ export default function App(): JSX.Element {
     }
   }
 
+  async function cancelGeneration(): Promise<void> {
+    if (!job) return
+    try {
+      setJob(await request<GenerationJob>('/jobs/cancel', 'POST', { id: job.id }))
+      setCreateNotice('Cancelando a geração...')
+    } catch (error) {
+      setCreateNotice(messageFrom(error))
+    }
+  }
+
+  async function clearHistory(): Promise<void> {
+    try {
+      const data = await request<{ entries: HistoryEntry[] }>('/history/clear', 'POST', {})
+      setHistory(data.entries)
+    } catch (error) {
+      setCreateNotice(messageFrom(error))
+    }
+  }
+
+  /** Aplica um novo conjunto de legendas guardando o anterior para o Ctrl+Z. */
+  function commitCues(next: Cue[], notice: string): void {
+    setPast((stack) => [...stack.slice(-49), cues])
+    setFuture([])
+    setCues(next)
+    setSelected([])
+    setSplitPosition(null)
+    setEditorNotice(notice)
+  }
+
+  function undo(): void {
+    setPast((stack) => {
+      if (stack.length === 0) return stack
+      const previous = stack[stack.length - 1]
+      setFuture((forward) => [cues, ...forward])
+      setCues(previous)
+      setSelected([])
+      setSplitPosition(null)
+      setEditorNotice('Alteração desfeita.')
+      return stack.slice(0, -1)
+    })
+  }
+
+  function redo(): void {
+    setFuture((stack) => {
+      if (stack.length === 0) return stack
+      const [next, ...rest] = stack
+      setPast((backward) => [...backward, cues])
+      setCues(next)
+      setSelected([])
+      setSplitPosition(null)
+      setEditorNotice('Alteração refeita.')
+      return rest
+    })
+  }
+
   async function saveSettings(): Promise<void> {
     setSavingSettings(true)
     try {
@@ -145,6 +238,8 @@ export default function App(): JSX.Element {
       setCues(result.cues)
       setSelected([])
       setSplitPosition(null)
+      setPast([])
+      setFuture([])
       setEditorNotice(`${result.cues.length} legendas carregadas.`)
     } catch (error) {
       setEditorNotice(messageFrom(error))
@@ -205,10 +300,7 @@ export default function App(): JSX.Element {
     setEditorBusy(true)
     try {
       const result = await request<CuesResult>('/srt/merge', 'POST', { cues, indices: selected })
-      setCues(result.cues)
-      setSelected([])
-      setSplitPosition(null)
-      setEditorNotice('Legendas mescladas.')
+      commitCues(result.cues, 'Legendas mescladas.')
     } catch (error) {
       setEditorNotice(messageFrom(error))
     } finally {
@@ -234,10 +326,7 @@ export default function App(): JSX.Element {
         text: cue.text,
         position
       })
-      setCues(result.cues)
-      setSelected([])
-      setSplitPosition(null)
-      setEditorNotice('Legenda dividida.')
+      commitCues(result.cues, 'Legenda dividida.')
     } catch (error) {
       setEditorNotice(messageFrom(error))
     } finally {
@@ -261,6 +350,52 @@ export default function App(): JSX.Element {
     }
   }
 
+  // Os atalhos leem as ações por ref para não capturarem estado velho — os
+  // handlers são recriados a cada render, o listener é registrado uma vez.
+  const actionsRef = useRef({ undo, redo, mergeCues, splitCue, saveSrt, openSrt })
+  actionsRef.current = { undo, redo, mergeCues, splitCue, saveSrt, openSrt }
+
+  useEffect(() => {
+    if (view !== 'editor') return undefined
+    const handler = (event: KeyboardEvent): void => {
+      const target = event.target as HTMLElement | null
+      const typing = target?.tagName === 'TEXTAREA'
+        || (target?.tagName === 'INPUT' && (target as HTMLInputElement).type !== 'button')
+      const actions = actionsRef.current
+      const combo = (key: string): boolean =>
+        (event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === key
+
+      if (combo('z') && !event.shiftKey) {
+        event.preventDefault()
+        actions.undo()
+      } else if (combo('y') || (combo('z') && event.shiftKey)) {
+        event.preventDefault()
+        actions.redo()
+      } else if (combo('s')) {
+        event.preventDefault()
+        void actions.saveSrt()
+      } else if (combo('o')) {
+        event.preventDefault()
+        void actions.openSrt()
+      } else if (event.key === 'Escape') {
+        setSelected([])
+        setSplitPosition(null)
+      } else if (matchesShortcut(event, settings.shortcut_merge)) {
+        event.preventDefault()
+        void actions.mergeCues()
+      } else if (matchesShortcut(event, settings.shortcut_split)) {
+        // O corte usa a posição do cursor dentro do campo: não bloqueamos a
+        // digitação, mas o atalho continua valendo mesmo com o campo focado.
+        event.preventDefault()
+        void actions.splitCue()
+      } else if (typing) {
+        return
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [view, settings.shortcut_merge, settings.shortcut_split])
+
   return (
     <div className="app-background flex h-full flex-col overflow-hidden">
       <TitleBar />
@@ -272,14 +407,19 @@ export default function App(): JSX.Element {
         <nav className="flex items-center gap-1">
           <NavButton active={view === 'create'} onClick={() => setView('create')}>Criar</NavButton>
           <NavButton active={view === 'editor'} onClick={() => setView('editor')}>Ajustar</NavButton>
-          <button onClick={() => setCreateNotice('Selecione um áudio, cole o roteiro e gere suas legendas.')} className="icon-button" title="Ajuda"><HelpCircle className="h-4 w-4" /></button>
-          <button className="icon-button" title="Configurações" onClick={() => setView('settings')}><Settings2 className="h-4 w-4" /></button>
+          <button className={navIconClass(view === 'history')} title="Histórico" onClick={() => setView('history')}><Clock className="h-4 w-4" /></button>
+          <button className={navIconClass(view === 'help')} title="Ajuda" onClick={() => setView('help')}><HelpCircle className="h-4 w-4" /></button>
+          <button className={navIconClass(view === 'settings')} title="Configurações" onClick={() => setView('settings')}><Settings2 className="h-4 w-4" /></button>
         </nav>
       </header>
 
+      <UpdateBanner update={update} onInstall={() => void window.legendAI.installUpdate()} />
+
       <main className="no-drag min-h-0 flex-1 overflow-y-auto px-8 pb-5">
-        {view === 'create' && <CreateView audioName={audioName} script={script} status={createNotice} progress={job?.status === 'completed' ? 1 : job?.progress ?? null} isGenerating={Boolean(job && ['queued', 'running'].includes(job.status))} outputFolder={job?.status === 'completed' ? job.output_folder : null} onChooseAudio={() => void selectAudio()} onDropAudio={dropAudio} onScriptChange={setScript} onGenerate={() => void generate()} onOpenOutput={() => { if (job?.output_folder) void window.legendAI.openPath(job.output_folder) }} />}
-        {view === 'editor' && <EditorView path={srtPath} cues={cues} selected={selected} splitPosition={splitPosition} notice={editorNotice} busy={editorBusy} onOpen={() => void openSrt()} onDropSrt={dropSrt} onSave={() => void saveSrt()} onToggle={toggleCue} onSplitPositionChange={setSplitPosition} onMerge={() => void mergeCues()} onSplit={() => void splitCue()} />}
+        {view === 'create' && <CreateView audioName={audioName} script={script} status={createNotice} progress={job?.status === 'completed' ? 1 : job?.progress ?? null} isGenerating={isGenerating} isCancelling={Boolean(job?.cancel_requested)} outputFolder={job?.status === 'completed' ? job.output_folder : null} onChooseAudio={() => void selectAudio()} onDropAudio={dropAudio} onScriptChange={setScript} onGenerate={() => void generate()} onCancel={() => void cancelGeneration()} onOpenOutput={() => { if (job?.output_folder) void window.legendAI.openPath(job.output_folder) }} />}
+        {view === 'editor' && <EditorView path={srtPath} cues={cues} selected={selected} splitPosition={splitPosition} notice={editorNotice} busy={editorBusy} canUndo={past.length > 0} canRedo={future.length > 0} shortcutMerge={settings.shortcut_merge} shortcutSplit={settings.shortcut_split} onOpen={() => void openSrt()} onDropSrt={dropSrt} onSave={() => void saveSrt()} onToggle={toggleCue} onSplitPositionChange={setSplitPosition} onMerge={() => void mergeCues()} onSplit={() => void splitCue()} onUndo={undo} onRedo={redo} />}
+        {view === 'history' && <HistoryView entries={history} onOpenFolder={(path) => void window.legendAI.openPath(path)} onClear={() => void clearHistory()} />}
+        {view === 'help' && <HelpView appVersion={appVersion} engineVersion={engineVersion} shortcutMerge={settings.shortcut_merge} shortcutSplit={settings.shortcut_split} />}
         {view === 'settings' && <SettingsView settings={settings} notice={settingsNotice} saving={savingSettings} onChange={setSettings} onSave={() => void saveSettings()} />}
       </main>
     </div>
@@ -290,12 +430,59 @@ function TitleBar(): JSX.Element {
   return <div className="drag flex h-10 shrink-0 items-center justify-between px-3"><div className="flex items-center gap-2 text-xs font-medium text-muted-foreground/80"><span className="h-2 w-2 rounded-full bg-primary shadow-glow" />LegendAI</div><div className="no-drag flex items-center gap-1"><button className="icon-button" onClick={() => window.legendAI.minimize()}><Minus className="h-3.5 w-3.5" /></button><button className="icon-button" onClick={() => window.legendAI.toggleMaximize()}><Maximize2 className="h-3.5 w-3.5" /></button><button className="icon-button hover:!bg-destructive hover:!text-white" onClick={() => window.legendAI.close()}><X className="h-4 w-4" /></button></div></div>
 }
 
+function navIconClass(active: boolean): string {
+  return ['icon-button', active ? 'bg-surface-elevated text-foreground shadow-soft' : ''].join(' ')
+}
+
+/** Aviso de atualização; some quando não há nada a informar. */
+function UpdateBanner({ update, onInstall }: { update: UpdateInfo; onInstall: () => void }): JSX.Element | null {
+  if (update.status === 'idle' || update.status === 'error') return null
+
+  const ready = update.status === 'downloaded'
+  const text = update.status === 'available'
+    ? `Atualização ${update.version ?? ''} disponível — baixando…`
+    : update.status === 'downloading'
+      ? `Baixando atualização… ${update.percent ?? 0}%`
+      : `Atualização ${update.version ?? ''} pronta para instalar.`
+
+  return (
+    <div className="no-drag mx-auto w-full max-w-[980px] px-8 pb-3">
+      <div className="flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary/10 px-4 py-2.5">
+        <Download className="h-4 w-4 shrink-0 text-primary" />
+        <span className="min-w-0 flex-1 truncate text-xs text-foreground">{text}</span>
+        {ready && (
+          <button onClick={onInstall} className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-all hover:brightness-110">
+            Reiniciar e instalar
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function NavButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: string }): JSX.Element {
   return <button onClick={onClick} className={['rounded-lg px-3 py-1.5 text-xs font-medium transition-colors', active ? 'bg-surface-elevated text-foreground shadow-soft' : 'text-muted-foreground hover:bg-surface-hover hover:text-foreground'].join(' ')}>{children}</button>
 }
 
 function fileName(path: string | null): string | undefined {
   return path?.split(/[/\\]/).pop()
+}
+
+/**
+ * Compara um atalho configurável ("Ctrl+Shift+M") com o evento do teclado.
+ * Aceita Cmd no lugar de Ctrl para quem usa teclado de Mac.
+ */
+function matchesShortcut(event: KeyboardEvent, shortcut: string): boolean {
+  const parts = shortcut.toLowerCase().split('+').map((part) => part.trim()).filter(Boolean)
+  if (parts.length === 0) return false
+  const key = parts[parts.length - 1]
+  const wantsCtrl = parts.includes('ctrl') || parts.includes('control') || parts.includes('cmd')
+  const wantsShift = parts.includes('shift')
+  const wantsAlt = parts.includes('alt')
+  return event.key.toLowerCase() === key
+    && (event.ctrlKey || event.metaKey) === wantsCtrl
+    && event.shiftKey === wantsShift
+    && event.altKey === wantsAlt
 }
 
 function messageFrom(error: unknown): string {

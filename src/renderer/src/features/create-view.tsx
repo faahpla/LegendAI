@@ -1,5 +1,5 @@
 import type { DragEvent } from 'react'
-import { ChevronRight, FileAudio, FileText, FolderOpen, LoaderCircle, Sparkles, UploadCloud } from 'lucide-react'
+import { ChevronRight, FileAudio, FileText, FolderOpen, LoaderCircle, Sparkles, UploadCloud, X } from 'lucide-react'
 
 type CreateViewProps = {
   audioName?: string
@@ -7,11 +7,13 @@ type CreateViewProps = {
   status: string
   progress: number | null
   isGenerating: boolean
+  isCancelling: boolean
   outputFolder: string | null
   onChooseAudio: () => void
   onDropAudio: (event: DragEvent<HTMLElement>) => void
   onScriptChange: (value: string) => void
   onGenerate: () => void
+  onCancel: () => void
   onOpenOutput: () => void
 }
 
@@ -21,11 +23,13 @@ export function CreateView({
   status,
   progress,
   isGenerating,
+  isCancelling,
   outputFolder,
   onChooseAudio,
   onDropAudio,
   onScriptChange,
   onGenerate,
+  onCancel,
   onOpenOutput
 }: CreateViewProps): JSX.Element {
   return (
@@ -100,6 +104,15 @@ export function CreateView({
             {outputFolder && !isGenerating && (
               <button onClick={onOpenOutput} className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-surface-elevated px-3 text-xs font-medium transition-colors hover:bg-surface-hover">
                 <FolderOpen className="h-3.5 w-3.5" /> Abrir pasta
+              </button>
+            )}
+            {isGenerating && (
+              <button
+                onClick={onCancel}
+                disabled={isCancelling}
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-surface-elevated px-3 text-xs font-medium transition-colors hover:border-destructive/60 hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+              >
+                <X className="h-3.5 w-3.5" /> {isCancelling ? 'Cancelando…' : 'Cancelar'}
               </button>
             )}
             <button

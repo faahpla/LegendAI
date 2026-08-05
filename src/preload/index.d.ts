@@ -10,6 +10,10 @@ declare global {
       minimize(): void
       toggleMaximize(): void
       close(): void
+      appVersion(): Promise<string>
+      currentUpdate<T>(): Promise<T>
+      installUpdate(): Promise<void>
+      onUpdateState(listener: (state: unknown) => void): () => void
     }
   }
 }

@@ -8,18 +8,20 @@ import logging
 import threading
 import uuid
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from . import __version__
 from .aligner import WhisperXAligner
 from .engine import Cue
 from .merge_split import CaptionMergeSplit
 from .pipeline import generate_subtitles
 from .settings import Settings
-from .utils import prepare_runtime_environment
+from .utils import open_folder, prepare_runtime_environment
 
 log = logging.getLogger("legendai.server")
 
@@ -45,6 +47,10 @@ def cues_from_data(raw_cues: object) -> list[Cue]:
     return cues
 
 
+class GenerationCancelled(RuntimeError):
+    """Sinaliza que o usuário pediu para abortar a geração."""
+
+
 @dataclass
 class Job:
     """Estado serializável de uma geração em segundo plano."""
@@ -56,6 +62,9 @@ class Job:
     files: list[str] = field(default_factory=list)
     output_folder: str | None = None
     error: str | None = None
+    # Cancelamento cooperativo: o pipeline chama `progress` em vários pontos e
+    # é ali que a flag é observada — não dá para matar a thread do WhisperX.
+    cancel_requested: bool = False
 
     def to_data(self) -> dict[str, Any]:
         return asdict(self)
@@ -64,11 +73,63 @@ class Job:
 class LegendApi:
     """Casos de uso expostos à interface, sem lógica HTTP acoplada."""
 
+    HISTORY_LIMIT = 50
+
     def __init__(self) -> None:
         self.settings = Settings.load()
         self.jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
         self._aligner: WhisperXAligner | None = None
+        self.history: list[dict[str, Any]] = self._load_history()
+
+    # ------------------------------------------------------------------
+    # Histórico de gerações (JSON ao lado das configurações)
+    # ------------------------------------------------------------------
+    @property
+    def history_path(self) -> Path:
+        return self.settings.path.parent / "history.json"
+
+    def _load_history(self) -> list[dict[str, Any]]:
+        try:
+            raw = json.loads(self.history_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return []
+        return raw if isinstance(raw, list) else []
+
+    def _save_history(self) -> None:
+        try:
+            self.history_path.parent.mkdir(parents=True, exist_ok=True)
+            self.history_path.write_text(
+                json.dumps(self.history, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+        except OSError:
+            log.warning("Não foi possível gravar o histórico.", exc_info=True)
+
+    def history_data(self) -> dict[str, Any]:
+        return {"entries": self.history}
+
+    def clear_history(self) -> dict[str, Any]:
+        self.history = []
+        self._save_history()
+        return self.history_data()
+
+    def _record_history(self, audio: Path, script: str, result: Any) -> None:
+        entry = {
+            "id": uuid.uuid4().hex,
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "audio_path": str(audio),
+            "audio_name": audio.name,
+            "script_preview": " ".join(script.split())[:160],
+            "files": [str(path) for path in result.files],
+            "output_folder": str(audio.parent),
+            "cue_count": len(result.cues),
+            "duration": result.audio_duration,
+            "confidence": result.confidence,
+        }
+        with self._lock:
+            self.history.insert(0, entry)
+            del self.history[self.HISTORY_LIMIT:]
+        self._save_history()
 
     def settings_data(self) -> dict[str, Any]:
         return asdict(self.settings)
@@ -81,9 +142,15 @@ class LegendApi:
             "margin_start": float,
             "margin_end": float,
             "max_gap": float,
+            "min_alignment_score": float,
         }
-        boolean_fields = {"close_gaps", "export_srt", "export_ass", "open_folder"}
-        string_fields = {"language", "shortcut_merge", "shortcut_split"}
+        boolean_fields = {
+            "close_gaps", "export_srt", "export_ass", "open_folder",
+            "strip_special_chars", "check_alignment",
+        }
+        string_fields = {
+            "language", "shortcut_merge", "shortcut_split", "keep_characters",
+        }
 
         for key, converter in numeric_fields.items():
             if key in raw:
@@ -124,10 +191,20 @@ class LegendApi:
         except KeyError as exc:
             raise ValueError("Geração não encontrada.") from exc
 
+    def cancel_generation(self, job_id: str) -> Job:
+        """Pede o cancelamento; efetivado no próximo ponto de progresso."""
+        job = self.get_job(job_id)
+        if job.status in {"queued", "running"}:
+            job.cancel_requested = True
+            job.message = "Cancelando..."
+        return job
+
     def _run_generation(self, job: Job, audio: Path, script: str) -> None:
         job.status = "running"
 
         def progress(message: str, fraction: float) -> None:
+            if job.cancel_requested:
+                raise GenerationCancelled()
             job.message = message
             job.progress = max(0.0, min(1.0, fraction))
 
@@ -142,6 +219,14 @@ class LegendApi:
             job.message = "Legenda gerada com sucesso."
             job.progress = 1.0
             job.status = "completed"
+            self._record_history(audio, script, result)
+            if self.settings.open_folder and result.files:
+                open_folder(result.files[0])
+        except GenerationCancelled:
+            log.info("Geração cancelada pelo usuário.")
+            job.status = "cancelled"
+            job.progress = 0.0
+            job.message = "Geração cancelada."
         except Exception as exc:  # noqa: BLE001 - enviado à UI como falha da tarefa
             log.exception("Falha ao gerar legendas")
             job.status = "failed"
@@ -194,8 +279,12 @@ class ApiRequestHandler(BaseHTTPRequestHandler):
         try:
             if path == "/health":
                 self._send_json(HTTPStatus.OK, {"ok": True})
+            elif path == "/version":
+                self._send_json(HTTPStatus.OK, {"version": __version__})
             elif path == "/settings":
                 self._send_json(HTTPStatus.OK, self.api.settings_data())
+            elif path == "/history":
+                self._send_json(HTTPStatus.OK, self.api.history_data())
             elif path.startswith("/jobs/"):
                 job = self.api.get_job(path.rsplit("/", 1)[-1])
                 self._send_json(HTTPStatus.OK, job.to_data())
@@ -216,6 +305,11 @@ class ApiRequestHandler(BaseHTTPRequestHandler):
             elif path == "/generate":
                 job = self.api.start_generation(str(data["audio_path"]), str(data["script"]))
                 self._send_json(HTTPStatus.ACCEPTED, job.to_data())
+            elif path == "/jobs/cancel":
+                job = self.api.cancel_generation(str(data["id"]))
+                self._send_json(HTTPStatus.OK, job.to_data())
+            elif path == "/history/clear":
+                self._send_json(HTTPStatus.OK, self.api.clear_history())
             elif path == "/srt/open":
                 self._send_json(HTTPStatus.OK, self.api.open_srt(str(data["path"])))
             elif path == "/srt/merge":

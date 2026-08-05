@@ -98,13 +98,24 @@ class LegendEngine:
     # limite de caracteres permanece sozinha (exceção da regra 4).
     # ------------------------------------------------------------------
     def _group_words(self, words: list[Word]) -> list[list[Word]]:
+        limit = max(self.settings.max_chars, 1)
         groups: list[list[Word]] = []
         pending: list[Word] = []
         for word in words:
             if normalize_word(word.text) in self._small:
                 pending.append(word)
                 continue
-            groups.append(pending + [word])
+            candidate = pending + [word]
+            if pending and self._group_length(candidate) > limit:
+                # Estourou o limite: as palavras pequenas voltam para a legenda
+                # anterior (nunca ficam sozinhas) e a palavra segue sozinha.
+                if groups:
+                    groups[-1].extend(pending)
+                else:
+                    groups.append(pending)
+                groups.append([word])
+            else:
+                groups.append(candidate)
             pending = []
         if pending:
             if groups:
@@ -112,6 +123,11 @@ class LegendEngine:
             else:
                 groups.append(pending)
         return groups
+
+    @staticmethod
+    def _group_length(group: list[Word]) -> int:
+        """Comprimento do texto exibido para um grupo (palavras + espaços)."""
+        return sum(len(word.text) for word in group) + max(len(group) - 1, 0)
 
     @staticmethod
     def _groups_to_cues(groups: list[list[Word]]) -> list[Cue]:

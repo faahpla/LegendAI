@@ -38,6 +38,14 @@ class Settings:
     language: str = "pt"
     shortcut_merge: str = "Ctrl+Shift+M"
     shortcut_split: str = "Ctrl+Shift+S"
+    # Limpeza opcional do roteiro: remove tudo que não for letra, dígito ou
+    # espaço, preservando os caracteres listados em `keep_characters`.
+    strip_special_chars: bool = False
+    keep_characters: str = '":'
+    # Guarda contra áudio que não corresponde ao roteiro: se a confiança do
+    # alinhamento ficar abaixo do limite, a geração falha avisando o usuário.
+    check_alignment: bool = True
+    min_alignment_score: float = 0.35
     small_words: list[str] = field(default_factory=lambda: list(DEFAULT_SMALL_WORDS))
 
     @property

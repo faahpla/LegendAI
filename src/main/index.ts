@@ -9,13 +9,31 @@ let mainWindow: BrowserWindow | null = null
 let backendProcess: ChildProcess | null = null
 let backendUrl = ''
 
+/** Último estado do updater, para responder a janelas abertas depois. */
+let updateState: Record<string, unknown> = { status: 'idle' }
+
+function publishUpdateState(state: Record<string, unknown>): void {
+  updateState = state
+  mainWindow?.webContents.send('updater:state', state)
+}
+
 function configureAutoUpdates(): void {
   if (!app.isPackaged || process.platform !== 'win32') return
 
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.on('update-available', (info) => {
+    publishUpdateState({ status: 'available', version: info.version })
+  })
+  autoUpdater.on('download-progress', (progress) => {
+    publishUpdateState({ status: 'downloading', percent: Math.round(progress.percent) })
+  })
+  autoUpdater.on('update-downloaded', (info) => {
+    publishUpdateState({ status: 'downloaded', version: info.version })
+  })
   autoUpdater.on('error', (error) => {
     console.warn('Update check failed:', error.message)
+    publishUpdateState({ status: 'error', message: error.message })
   })
   void autoUpdater.checkForUpdatesAndNotify().catch((error: Error) => {
     console.warn('Update check failed:', error.message)
@@ -123,6 +141,11 @@ app.whenReady().then(async () => {
     return result.canceled ? null : result.filePath
   })
   ipcMain.handle('shell:open-path', (_event, path: string) => shell.openPath(path))
+  ipcMain.handle('app:version', () => app.getVersion())
+  ipcMain.handle('updater:current', () => updateState)
+  ipcMain.handle('updater:install', () => {
+    autoUpdater.quitAndInstall()
+  })
   ipcMain.handle(
     'backend:request',
     async (_event, request: { path: string; method?: string; data?: unknown }) => {

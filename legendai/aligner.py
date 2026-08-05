@@ -8,6 +8,7 @@ original do roteiro.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
@@ -17,6 +18,24 @@ from .utils import normalize_word, prepare_runtime_environment, resource_path, s
 ProgressFn = Callable[[str, float], None]
 
 _SAMPLE_RATE = 16_000
+
+
+@dataclass
+class AlignmentReport:
+    """Resultado do alinhamento com os indicadores de qualidade.
+
+    ``score`` é a confiança média que o wav2vec2 atribuiu às palavras — o
+    alinhamento forçado sempre devolve tempos, mesmo para um áudio que não
+    tem nada a ver com o roteiro, então é a confiança (e não a existência de
+    tempos) que denuncia o descasamento. Fica ``None`` quando a versão do
+    WhisperX não informa pontuação, caso em que a verificação é ignorada.
+    ``coverage`` é a fração de tokens do roteiro que receberam tempo.
+    """
+
+    words: list[Word]
+    duration: float
+    coverage: float
+    score: float | None
 
 
 def tokenize_script(script: str) -> list[str]:
@@ -63,8 +82,8 @@ class WhisperXAligner:
 
     def align(
         self, audio_path: Path, script: str, progress: ProgressFn
-    ) -> tuple[list[Word], float]:
-        """Retorna (tokens do roteiro com tempos, duração do áudio em s)."""
+    ) -> AlignmentReport:
+        """Alinha o roteiro ao áudio e reporta a qualidade do resultado."""
         tokens = tokenize_script(script)
         if not tokens:
             raise ValueError("O roteiro está vazio.")
@@ -91,7 +110,25 @@ class WhisperXAligner:
 
         aligned = self._collect_aligned_words(result)
         progress("Mapeando tempos para o roteiro...", 0.62)
-        return self._map_to_tokens(tokens, aligned), duration
+        words = self._map_to_tokens(tokens, aligned)
+        timed = sum(1 for word in words if word.start is not None)
+        return AlignmentReport(
+            words=words,
+            duration=duration,
+            coverage=timed / len(words) if words else 0.0,
+            score=self._mean_score(aligned),
+        )
+
+    @staticmethod
+    def _mean_score(aligned: list[dict]) -> float | None:
+        """Confiança média das palavras alinhadas (None se indisponível)."""
+        scores = [
+            float(raw["score"]) for raw in aligned
+            if isinstance(raw.get("score"), (int, float))
+            # NaN != NaN: descarta pontuações inválidas do alinhador.
+            and raw["score"] == raw["score"]
+        ]
+        return sum(scores) / len(scores) if scores else None
 
     @staticmethod
     def _collect_aligned_words(result: dict) -> list[dict]:

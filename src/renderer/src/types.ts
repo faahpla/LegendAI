@@ -1,4 +1,4 @@
-export type View = 'create' | 'editor' | 'settings'
+export type View = 'create' | 'editor' | 'settings' | 'history' | 'help'
 
 export type Cue = {
   text: string
@@ -8,12 +8,33 @@ export type Cue = {
 
 export type GenerationJob = {
   id: string
-  status: 'queued' | 'running' | 'completed' | 'failed'
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
   progress: number
   message: string
   files: string[]
   output_folder: string | null
   error: string | null
+  cancel_requested: boolean
+}
+
+export type HistoryEntry = {
+  id: string
+  created_at: string
+  audio_path: string
+  audio_name: string
+  script_preview: string
+  files: string[]
+  output_folder: string
+  cue_count: number
+  duration: number
+  confidence: number | null
+}
+
+export type UpdateInfo = {
+  status: 'idle' | 'available' | 'downloading' | 'downloaded' | 'error'
+  version?: string
+  percent?: number
+  message?: string
 }
 
 export type EngineSettings = {
@@ -30,6 +51,10 @@ export type EngineSettings = {
   language: string
   shortcut_merge: string
   shortcut_split: string
+  strip_special_chars: boolean
+  keep_characters: string
+  check_alignment: boolean
+  min_alignment_score: number
   small_words: string[]
 }
 
@@ -47,5 +72,9 @@ export const fallbackSettings: EngineSettings = {
   language: 'pt',
   shortcut_merge: 'Ctrl+Shift+M',
   shortcut_split: 'Ctrl+Shift+S',
+  strip_special_chars: false,
+  keep_characters: '":',
+  check_alignment: true,
+  min_alignment_score: 0.35,
   small_words: []
 }

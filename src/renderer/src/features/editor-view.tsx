@@ -1,5 +1,5 @@
 import type { DragEvent } from 'react'
-import { Check, ChevronRight, FolderOpen, Merge, Save, Scissors } from 'lucide-react'
+import { Check, ChevronRight, FolderOpen, Merge, Redo2, Save, Scissors, Undo2 } from 'lucide-react'
 import type { Cue } from '@/types'
 
 type EditorViewProps = {
@@ -9,6 +9,10 @@ type EditorViewProps = {
   splitPosition: number | null
   notice: string
   busy: boolean
+  canUndo: boolean
+  canRedo: boolean
+  shortcutMerge: string
+  shortcutSplit: string
   onOpen: () => void
   onDropSrt: (event: DragEvent<HTMLElement>) => void
   onSave: () => void
@@ -16,6 +20,8 @@ type EditorViewProps = {
   onSplitPositionChange: (position: number | null) => void
   onMerge: () => void
   onSplit: () => void
+  onUndo: () => void
+  onRedo: () => void
 }
 
 export function EditorView({
@@ -25,13 +31,19 @@ export function EditorView({
   splitPosition,
   notice,
   busy,
+  canUndo,
+  canRedo,
+  shortcutMerge,
+  shortcutSplit,
   onOpen,
   onDropSrt,
   onSave,
   onToggle,
   onSplitPositionChange,
   onMerge,
-  onSplit
+  onSplit,
+  onUndo,
+  onRedo
 }: EditorViewProps): JSX.Element {
   const splitTarget = selected.length === 1 ? cues[selected[0]]?.text ?? '' : ''
   // As duas metades precisam ter texto após aparar espaços — mesma regra do motor.
@@ -57,6 +69,12 @@ export function EditorView({
           <p className="mt-1 text-sm text-muted-foreground">Mescle ou divida blocos sem sair do LegendAI.</p>
         </div>
         <div className="flex items-center gap-2">
+          {path && (
+            <div className="mr-1 flex items-center gap-1">
+              <button onClick={onUndo} disabled={!canUndo} title="Desfazer (Ctrl+Z)" className="icon-button disabled:opacity-30"><Undo2 className="h-4 w-4" /></button>
+              <button onClick={onRedo} disabled={!canRedo} title="Refazer (Ctrl+Y)" className="icon-button disabled:opacity-30"><Redo2 className="h-4 w-4" /></button>
+            </div>
+          )}
           <button onClick={onOpen} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-surface-elevated px-3 text-sm font-medium transition-colors hover:bg-surface-hover">
             <FolderOpen className="h-3.5 w-3.5" /> Abrir SRT
           </button>
@@ -106,8 +124,8 @@ export function EditorView({
           <div className="flex items-center justify-between gap-4 border-t border-border/70 px-6 py-4">
             <span className="truncate text-xs text-muted-foreground">{editorHint}</span>
             <div className="flex shrink-0 gap-2">
-              <button onClick={onMerge} disabled={busy || selected.length < 2} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-surface-elevated px-3 text-sm font-medium transition-colors hover:bg-surface-hover disabled:opacity-40"><Merge className="h-3.5 w-3.5" /> Mesclar</button>
-              <button onClick={onSplit} disabled={busy || !canSplit} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-surface-elevated px-3 text-sm font-medium transition-colors hover:bg-surface-hover disabled:opacity-40"><Scissors className="h-3.5 w-3.5" /> Dividir</button>
+              <button onClick={onMerge} disabled={busy || selected.length < 2} title={`Mesclar (${shortcutMerge})`} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-surface-elevated px-3 text-sm font-medium transition-colors hover:bg-surface-hover disabled:opacity-40"><Merge className="h-3.5 w-3.5" /> Mesclar</button>
+              <button onClick={onSplit} disabled={busy || !canSplit} title={`Dividir (${shortcutSplit})`} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-surface-elevated px-3 text-sm font-medium transition-colors hover:bg-surface-hover disabled:opacity-40"><Scissors className="h-3.5 w-3.5" /> Dividir</button>
             </div>
           </div>
         </div>

@@ -71,6 +71,21 @@ def normalize_word(word: str) -> str:
     return stripped.strip(".,;:!?…\"'()[]{}«»“”‘’-–—")
 
 
+def strip_special_characters(text: str, keep: str = '":') -> str:
+    """Remove caracteres especiais do roteiro.
+
+    Preserva letras (com acento), dígitos, espaços/quebras de linha e os
+    caracteres listados em ``keep`` — por padrão aspas e dois-pontos. Espaços
+    criados pela remoção são colapsados para não gerar tokens vazios.
+    """
+    allowed = set(keep)
+    cleaned = "".join(
+        char for char in text
+        if char.isalnum() or char.isspace() or char in allowed
+    )
+    return re.sub(r"[^\S\n]{2,}", " ", cleaned).strip()
+
+
 def strip_accents(text: str) -> str:
     decomposed = unicodedata.normalize("NFD", text)
     return "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
