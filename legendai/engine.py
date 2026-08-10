@@ -226,10 +226,20 @@ class LegendEngine:
     # quadros diferentes e abrir um vão de ~33 ms. Colocando os tempos
     # exatamente sobre a grade, não sobra o que arredondar.
     # ------------------------------------------------------------------
+    # Taxas NTSC são frações (24000/1001, não 23,976). O usuário digita o valor
+    # arredondado que aparece no editor; aqui voltamos ao valor exato.
+    NTSC_RATES = {
+        23.976: 24000 / 1001,
+        29.97: 30000 / 1001,
+        47.952: 48000 / 1001,
+        59.94: 60000 / 1001,
+    }
+
     def _snap_to_frames(self, cues: list[Cue]) -> None:
         fps = self.settings.snap_fps
         if fps <= 0 or not cues:
             return
+        fps = self.NTSC_RATES.get(round(fps, 3), fps)
         step = 1.0 / fps
         for cue in cues:
             cue.start = round(cue.start * fps) / fps

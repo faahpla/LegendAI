@@ -1,5 +1,18 @@
 import type { EngineSettings } from '@/types'
 
+/** Taxas mais comuns; NTSC (23,976 / 29,97 / 59,94) o motor converte para a fração exata. */
+const FPS_PRESETS = [
+  { value: 0, label: 'Desligado' },
+  { value: 23.976, label: '23,976' },
+  { value: 24, label: '24' },
+  { value: 25, label: '25' },
+  { value: 29.97, label: '29,97' },
+  { value: 30, label: '30' },
+  { value: 50, label: '50' },
+  { value: 59.94, label: '59,94' },
+  { value: 60, label: '60' }
+]
+
 type SettingsViewProps = {
   settings: EngineSettings
   notice: string
@@ -38,17 +51,32 @@ export function SettingsView({ settings, notice, saving, loaded, onChange, onSav
             checked={settings.close_gaps}
             onChange={(checked) => set('close_gaps', checked)}
           />
-          <div className="mt-3 max-w-[240px]">
-            <NumberField
-              label="Alinhar aos quadros (FPS)"
-              suffix="fps"
-              value={settings.snap_fps}
-              onChange={(value) => set('snap_fps', value)}
-            />
-            <p className="mt-1.5 text-[11px] leading-4 text-muted-foreground/80">
-              Use o FPS do seu projeto. Editores por quadro (CapCut) podem abrir um
-              piscado de um quadro quando o tempo cai no meio de um. 0 desliga.
-              25 e 50 fps ficam exatos no SRT; 30 e 60 têm erro de ~1 ms.
+          <div className="mt-3">
+            <span className="mb-2 block text-xs text-muted-foreground">Alinhar aos quadros</span>
+            <div className="flex flex-wrap gap-1.5">
+              {FPS_PRESETS.map((preset) => (
+                <button
+                  key={preset.value}
+                  type="button"
+                  onClick={() => set('snap_fps', preset.value)}
+                  className={[
+                    'rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors',
+                    Math.abs(settings.snap_fps - preset.value) < 0.001
+                      ? 'border-primary bg-primary/15 text-foreground'
+                      : 'border-border bg-surface-elevated text-muted-foreground hover:bg-surface-hover'
+                  ].join(' ')}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] leading-4 text-muted-foreground/80">
+              Use o FPS do <strong>seu</strong> projeto — editores por quadro (CapCut)
+              podem abrir um piscado de um quadro quando o tempo cai no meio de um.
+              Cada pessoa gera o próprio SRT com o próprio FPS: as grades de 23,976 e
+              30 só coincidem a cada 33 s, então não existe arquivo único que sirva
+              para os dois. 25 e 50 ficam exatos no SRT; as demais têm erro de ~1 ms,
+              imperceptível.
             </p>
           </div>
         </PreferenceSection>
