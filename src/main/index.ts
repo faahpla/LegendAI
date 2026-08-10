@@ -8,6 +8,31 @@ import { join } from 'node:path'
 let mainWindow: BrowserWindow | null = null
 let backendProcess: ChildProcess | null = null
 let backendUrl = ''
+let backendReady: Promise<void> | null = null
+
+/**
+ * Espera o motor local atender antes de deixar qualquer requisição passar.
+ *
+ * O executável congelado leva ~10 s para subir, enquanto a janela aparece
+ * quase instantaneamente. Sem esta espera as primeiras chamadas falhavam e a
+ * interface caía nos valores padrão — o que fazia as configurações do usuário
+ * parecerem apagadas (e virava perda real de dados ao salvar por cima).
+ */
+async function waitForBackend(timeoutMs = 120_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  let lastError: unknown = null
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`${backendUrl}/health`)
+      if (response.ok) return
+    } catch (error) {
+      lastError = error
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200))
+  }
+  const detail = lastError instanceof Error ? ` (${lastError.message})` : ''
+  throw new Error(`O motor do LegendAI não respondeu a tempo${detail}.`)
+}
 
 /** Último estado do updater, para responder a janelas abertas depois. */
 let updateState: Record<string, unknown> = { status: 'idle' }
@@ -76,6 +101,9 @@ async function startBackend(): Promise<void> {
     stdio: 'ignore'
   })
   backendUrl = `http://127.0.0.1:${port}`
+  // Evita "unhandled rejection": o erro é reapresentado em cada requisição.
+  backendReady = waitForBackend()
+  backendReady.catch(() => undefined)
 }
 
 function createWindow(): void {
@@ -149,6 +177,7 @@ app.whenReady().then(async () => {
   ipcMain.handle(
     'backend:request',
     async (_event, request: { path: string; method?: string; data?: unknown }) => {
+      if (backendReady) await backendReady
       const response = await fetch(`${backendUrl}${request.path}`, {
         method: request.method ?? 'GET',
         headers: request.data === undefined ? undefined : { 'Content-Type': 'application/json' },

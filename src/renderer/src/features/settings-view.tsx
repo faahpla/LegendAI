@@ -4,11 +4,12 @@ type SettingsViewProps = {
   settings: EngineSettings
   notice: string
   saving: boolean
+  loaded: boolean
   onChange: (settings: EngineSettings) => void
   onSave: () => void
 }
 
-export function SettingsView({ settings, notice, saving, onChange, onSave }: SettingsViewProps): JSX.Element {
+export function SettingsView({ settings, notice, saving, loaded, onChange, onSave }: SettingsViewProps): JSX.Element {
   const set = <K extends keyof EngineSettings>(key: K, value: EngineSettings[K]): void => {
     onChange({ ...settings, [key]: value })
   }
@@ -28,6 +29,27 @@ export function SettingsView({ settings, notice, saving, onChange, onSave }: Set
             <NumberField label="Fechar vãos até" suffix="seg" value={settings.max_gap} onChange={(value) => set('max_gap', value)} />
             <NumberField label="Margem inicial" suffix="seg" value={settings.margin_start} onChange={(value) => set('margin_start', value)} />
             <NumberField label="Margem final" suffix="seg" value={settings.margin_end} onChange={(value) => set('margin_end', value)} />
+          </div>
+        </PreferenceSection>
+        <PreferenceSection title="Compatibilidade com o editor">
+          <Toggle
+            label="Fechar espaços entre legendas"
+            hint={`Emenda pausas de até ${settings.max_gap}s. Aumente "Fechar vãos até" para eliminar também as pausas longas.`}
+            checked={settings.close_gaps}
+            onChange={(checked) => set('close_gaps', checked)}
+          />
+          <div className="mt-3 max-w-[240px]">
+            <NumberField
+              label="Alinhar aos quadros (FPS)"
+              suffix="fps"
+              value={settings.snap_fps}
+              onChange={(value) => set('snap_fps', value)}
+            />
+            <p className="mt-1.5 text-[11px] leading-4 text-muted-foreground/80">
+              Use o FPS do seu projeto. Editores por quadro (CapCut) podem abrir um
+              piscado de um quadro quando o tempo cai no meio de um. 0 desliga.
+              25 e 50 fps ficam exatos no SRT; 30 e 60 têm erro de ~1 ms.
+            </p>
           </div>
         </PreferenceSection>
         <PreferenceSection title="Texto do roteiro">
@@ -66,15 +88,14 @@ export function SettingsView({ settings, notice, saving, onChange, onSave }: Set
           </div>
         </PreferenceSection>
         <PreferenceSection title="Exportação">
-          <Toggle label="Fechar espaços entre legendas" checked={settings.close_gaps} onChange={(checked) => set('close_gaps', checked)} />
           <Toggle label="Exportar SRT" checked={settings.export_srt} onChange={(checked) => set('export_srt', checked)} />
           <Toggle label="Exportar ASS" checked={settings.export_ass} onChange={(checked) => set('export_ass', checked)} />
           <Toggle label="Abrir pasta ao concluir" checked={settings.open_folder} onChange={(checked) => set('open_folder', checked)} />
         </PreferenceSection>
         <div className="flex items-center justify-between gap-4 border-t border-border/70 px-7 py-4">
           <span className="text-xs text-muted-foreground">{notice}</span>
-          <button onClick={onSave} disabled={saving} className="h-9 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground shadow-glow transition-all hover:brightness-110 active:scale-[.98] disabled:opacity-60">
-            {saving ? 'Salvando…' : 'Salvar alterações'}
+          <button onClick={onSave} disabled={saving || !loaded} className="h-9 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground shadow-glow transition-all hover:brightness-110 active:scale-[.98] disabled:opacity-60">
+            {saving ? 'Salvando…' : loaded ? 'Salvar alterações' : 'Carregando…'}
           </button>
         </div>
       </div>

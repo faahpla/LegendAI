@@ -25,6 +25,9 @@ export default function App(): JSX.Element {
   const [settings, setSettings] = useState<EngineSettings>(fallbackSettings)
   const [settingsNotice, setSettingsNotice] = useState('Carregando configurações…')
   const [savingSettings, setSavingSettings] = useState(false)
+  // Enquanto o disco não foi lido, `settings` é só o fallback: salvar aqui
+  // apagaria as preferências reais do usuário.
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [srtPath, setSrtPath] = useState<string | null>(null)
   const [cues, setCues] = useState<Cue[]>([])
   const [selected, setSelected] = useState<number[]>([])
@@ -42,21 +45,18 @@ export default function App(): JSX.Element {
   const audioName = useMemo(() => fileName(audioPath), [audioPath])
   const isGenerating = Boolean(job && ['queued', 'running'].includes(job.status))
 
+  // O processo principal já segura a requisição até o motor responder, então
+  // aqui basta uma tentativa — o que chegar é o estado real do disco.
   useEffect(() => {
     let cancelled = false
-    let attempts = 0
     const loadSettings = async (): Promise<void> => {
       try {
         const loaded = await request<EngineSettings>('/settings')
         if (cancelled) return
         setSettings(loaded)
+        setSettingsLoaded(true)
         setSettingsNotice('Configurações salvas localmente.')
       } catch (error) {
-        attempts += 1
-        if (attempts < 7 && !cancelled) {
-          window.setTimeout(() => void loadSettings(), 300)
-          return
-        }
         if (!cancelled) setSettingsNotice(messageFrom(error))
       }
     }
@@ -216,6 +216,10 @@ export default function App(): JSX.Element {
   }
 
   async function saveSettings(): Promise<void> {
+    if (!settingsLoaded) {
+      setSettingsNotice('Aguarde o motor terminar de carregar antes de salvar.')
+      return
+    }
     setSavingSettings(true)
     try {
       const saved = await request<EngineSettings>('/settings', 'POST', settings)
@@ -420,7 +424,7 @@ export default function App(): JSX.Element {
         {view === 'editor' && <EditorView path={srtPath} cues={cues} selected={selected} splitPosition={splitPosition} notice={editorNotice} busy={editorBusy} canUndo={past.length > 0} canRedo={future.length > 0} shortcutMerge={settings.shortcut_merge} shortcutSplit={settings.shortcut_split} onOpen={() => void openSrt()} onDropSrt={dropSrt} onSave={() => void saveSrt()} onToggle={toggleCue} onSplitPositionChange={setSplitPosition} onMerge={() => void mergeCues()} onSplit={() => void splitCue()} onUndo={undo} onRedo={redo} />}
         {view === 'history' && <HistoryView entries={history} onOpenFolder={(path) => void window.legendAI.openPath(path)} onClear={() => void clearHistory()} />}
         {view === 'help' && <HelpView appVersion={appVersion} engineVersion={engineVersion} shortcutMerge={settings.shortcut_merge} shortcutSplit={settings.shortcut_split} />}
-        {view === 'settings' && <SettingsView settings={settings} notice={settingsNotice} saving={savingSettings} onChange={setSettings} onSave={() => void saveSettings()} />}
+        {view === 'settings' && <SettingsView settings={settings} notice={settingsNotice} saving={savingSettings} loaded={settingsLoaded} onChange={setSettings} onSave={() => void saveSettings()} />}
       </main>
     </div>
   )

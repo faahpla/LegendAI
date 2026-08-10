@@ -143,6 +143,7 @@ class LegendApi:
             "margin_end": float,
             "max_gap": float,
             "min_alignment_score": float,
+            "snap_fps": float,
         }
         boolean_fields = {
             "close_gaps", "export_srt", "export_ass", "open_folder",

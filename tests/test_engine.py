@@ -84,7 +84,14 @@ class TestTiming(unittest.TestCase):
     def test_max_duration_cap(self):
         words = make_words([("Silêncio", 0.0, 7.0)])
         cues = self.engine.build(words, total_duration=8.0)
-        self.assertLessEqual(cues[0].duration, self.settings.max_duration + self.settings.margin_end + 1e-6)
+        # O alinhamento à grade de quadros roda por último e arredonda início e
+        # fim com a mesma regra (é isso que mantém as legendas encostadas), de
+        # modo que o fim pode subir até meio quadro acima do teto.
+        tolerance = 0.5 / self.settings.snap_fps if self.settings.snap_fps > 0 else 0.0
+        self.assertLessEqual(
+            cues[0].duration,
+            self.settings.max_duration + self.settings.margin_end + tolerance + 1e-6,
+        )
 
     def test_no_overlap(self):
         words = make_words([

@@ -52,6 +52,46 @@ class TestMaxChars(unittest.TestCase):
         self.assertEqual([c.text for c in cues], ["automaticamente"])
 
 
+class TestFrameSnapping(unittest.TestCase):
+    """Editores por quadro abriam um piscado quando o tempo caía no meio de um."""
+
+    def build(self, fps, spec):
+        settings = Settings()
+        settings.snap_fps = fps
+        return LegendEngine(settings).build(make_words(spec), total_duration=6.0)
+
+    SPEC = [
+        ("Hoje", 0.121, 0.601), ("Ichigo", 0.7, 1.207),
+        ("despertou", 1.3, 1.99), ("Bankai", 2.1, 2.443),
+    ]
+
+    def test_times_land_on_the_frame_grid(self):
+        # 25 fps (40 ms) é exato em milissegundos, então a grade fica perfeita.
+        for cue in self.build(25.0, self.SPEC):
+            self.assertAlmostEqual(cue.start * 25, round(cue.start * 25), places=6)
+            self.assertAlmostEqual(cue.end * 25, round(cue.end * 25), places=6)
+
+    def test_cues_stay_contiguous(self):
+        cues = self.build(25.0, self.SPEC)
+        for previous, cue in zip(cues, cues[1:]):
+            self.assertAlmostEqual(previous.end, cue.start, places=6)
+
+    def test_no_cue_collapses_to_zero(self):
+        cues = self.build(25.0, self.SPEC)
+        for cue in cues:
+            self.assertGreater(cue.end, cue.start)
+
+    def test_zero_disables_snapping(self):
+        cues = self.build(0.0, self.SPEC)
+        off_grid = [c for c in cues if abs(c.start * 25 - round(c.start * 25)) > 1e-6]
+        self.assertTrue(off_grid, "sem snap algum tempo deveria cair fora da grade")
+
+    def test_snapping_never_reorders_or_overlaps(self):
+        cues = self.build(30.0, self.SPEC)
+        for previous, cue in zip(cues, cues[1:]):
+            self.assertLessEqual(previous.end, cue.start + 1e-9)
+
+
 class TestStripSpecialCharacters(unittest.TestCase):
     def test_keeps_quotes_and_colon_by_default(self):
         self.assertEqual(

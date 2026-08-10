@@ -54,6 +54,7 @@ class LegendEngine:
         self._apply_margins(cues, total_duration)
         self._fix_overlaps(cues)
         self._close_gaps(cues)
+        self._snap_to_frames(cues)
         return [Cue(c.text, round(c.start, 3), round(c.end, 3)) for c in cues]
 
     # ------------------------------------------------------------------
@@ -217,6 +218,29 @@ class LegendEngine:
             gap = cue.start - prev.end
             if 0.0 < gap <= max_gap:
                 prev.end = cue.start
+
+    # ------------------------------------------------------------------
+    # Alinhamento à grade de quadros. Um editor baseado em quadro arredonda
+    # cada tempo do SRT por conta própria; quando o valor cai no meio de um
+    # quadro, o fim de uma legenda e o início da seguinte podem parar em
+    # quadros diferentes e abrir um vão de ~33 ms. Colocando os tempos
+    # exatamente sobre a grade, não sobra o que arredondar.
+    # ------------------------------------------------------------------
+    def _snap_to_frames(self, cues: list[Cue]) -> None:
+        fps = self.settings.snap_fps
+        if fps <= 0 or not cues:
+            return
+        step = 1.0 / fps
+        for cue in cues:
+            cue.start = round(cue.start * fps) / fps
+            cue.end = round(cue.end * fps) / fps
+        # Após arredondar, garante ao menos um quadro de duração e mantém as
+        # legendas encostadas (empurrando a seguinte quando preciso).
+        for index, cue in enumerate(cues):
+            if cue.end <= cue.start:
+                cue.end = cue.start + step
+            if index + 1 < len(cues) and cues[index + 1].start < cue.end:
+                cues[index + 1].start = cue.end
 
     # ------------------------------------------------------------------
     # Regra 6: duração máxima configurável.

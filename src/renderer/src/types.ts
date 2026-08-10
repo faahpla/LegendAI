@@ -45,6 +45,7 @@ export type EngineSettings = {
   margin_end: number
   close_gaps: boolean
   max_gap: number
+  snap_fps: number
   export_srt: boolean
   export_ass: boolean
   open_folder: boolean
@@ -66,6 +67,7 @@ export const fallbackSettings: EngineSettings = {
   margin_end: 0.03,
   close_gaps: true,
   max_gap: 0.5,
+  snap_fps: 30,
   export_srt: true,
   export_ass: true,
   open_folder: true,

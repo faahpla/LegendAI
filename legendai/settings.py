@@ -32,6 +32,12 @@ class Settings:
     margin_end: float = 0.030
     close_gaps: bool = True
     max_gap: float = 0.5
+    # Alinha os tempos à grade de quadros do projeto. Editores baseados em
+    # quadro (CapCut) arredondam cada tempo por conta própria e podem separar
+    # o fim de uma legenda do início da seguinte, criando um piscado de um
+    # quadro. Com os tempos já sobre a grade, não há o que arredondar.
+    # 0 desliga o alinhamento.
+    snap_fps: float = 30.0
     export_srt: bool = True
     export_ass: bool = True
     open_folder: bool = True
