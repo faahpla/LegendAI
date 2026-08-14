@@ -41,6 +41,8 @@ export default function App(): JSX.Element {
   const [update, setUpdate] = useState<UpdateInfo>({ status: 'idle' })
   const [appVersion, setAppVersion] = useState('—')
   const [engineVersion, setEngineVersion] = useState('—')
+  // Retrato das legendas antes da sessão de edição de texto em andamento.
+  const editAnchorRef = useRef<Cue[] | null>(null)
 
   const audioName = useMemo(() => fileName(audioPath), [audioPath])
   const isGenerating = Boolean(job && ['queued', 'running'].includes(job.status))
@@ -179,17 +181,43 @@ export default function App(): JSX.Element {
     }
   }
 
+  function pushHistory(snapshot: Cue[]): void {
+    setPast((stack) => [...stack.slice(-49), snapshot])
+    setFuture([])
+  }
+
   /** Aplica um novo conjunto de legendas guardando o anterior para o Ctrl+Z. */
   function commitCues(next: Cue[], notice: string): void {
-    setPast((stack) => [...stack.slice(-49), cues])
-    setFuture([])
+    pushHistory(cues)
     setCues(next)
     setSelected([])
     setSplitPosition(null)
     setEditorNotice(notice)
   }
 
+  /**
+   * Edição do texto de uma legenda. O retrato anterior é guardado uma única vez
+   * por sessão de edição, para o Ctrl+Z desfazer a frase inteira e não letra
+   * por letra; a sessão fecha quando o campo perde o foco.
+   */
+  function changeCueText(index: number, text: string): void {
+    if (editAnchorRef.current === null) editAnchorRef.current = cues
+    setCues((current) => current.map((cue, position) =>
+      position === index ? { ...cue, text } : cue))
+  }
+
+  function commitCueText(): void {
+    const snapshot = editAnchorRef.current
+    editAnchorRef.current = null
+    if (snapshot && snapshot !== cues) {
+      pushHistory(snapshot)
+      setEditorNotice('Texto da legenda atualizado.')
+    }
+  }
+
   function undo(): void {
+    // Ctrl+Z durante a digitação deve desfazer a edição de texto em curso.
+    commitCueText()
     setPast((stack) => {
       if (stack.length === 0) return stack
       const previous = stack[stack.length - 1]
@@ -279,6 +307,9 @@ export default function App(): JSX.Element {
    * - Clique longe (ou no meio do bloco): recomeça a seleção ali.
    */
   function toggleCue(index: number, extend = false): void {
+    // Trocar de linha desmonta o campo de edição sem garantia de `blur`;
+    // fechamos a sessão aqui para o Ctrl+Z não perder o retrato anterior.
+    commitCueText()
     setSelected((current) => {
       if (extend && current.length > 0) {
         const anchor = current[0]
@@ -301,6 +332,7 @@ export default function App(): JSX.Element {
 
   async function mergeCues(): Promise<void> {
     if (selected.length < 2) return
+    commitCueText()
     setEditorBusy(true)
     try {
       const result = await request<CuesResult>('/srt/merge', 'POST', { cues, indices: selected })
@@ -314,6 +346,7 @@ export default function App(): JSX.Element {
 
   async function splitCue(): Promise<void> {
     if (selected.length !== 1) return
+    commitCueText()
     const position = splitPosition
     const cue = cues[selected[0]]
     // Espelha a regra do motor: as duas metades precisam sobrar com texto real,
@@ -356,8 +389,8 @@ export default function App(): JSX.Element {
 
   // Os atalhos leem as ações por ref para não capturarem estado velho — os
   // handlers são recriados a cada render, o listener é registrado uma vez.
-  const actionsRef = useRef({ undo, redo, mergeCues, splitCue, saveSrt, openSrt })
-  actionsRef.current = { undo, redo, mergeCues, splitCue, saveSrt, openSrt }
+  const actionsRef = useRef({ undo, redo, mergeCues, splitCue, saveSrt, openSrt, commitCueText })
+  actionsRef.current = { undo, redo, mergeCues, splitCue, saveSrt, openSrt, commitCueText }
 
   useEffect(() => {
     if (view !== 'editor') return undefined
@@ -382,6 +415,7 @@ export default function App(): JSX.Element {
         event.preventDefault()
         void actions.openSrt()
       } else if (event.key === 'Escape') {
+        actions.commitCueText()
         setSelected([])
         setSplitPosition(null)
       } else if (matchesShortcut(event, settings.shortcut_merge)) {
@@ -421,7 +455,7 @@ export default function App(): JSX.Element {
 
       <main className="no-drag min-h-0 flex-1 overflow-y-auto px-8 pb-5">
         {view === 'create' && <CreateView audioName={audioName} script={script} status={createNotice} progress={job?.status === 'completed' ? 1 : job?.progress ?? null} isGenerating={isGenerating} isCancelling={Boolean(job?.cancel_requested)} outputFolder={job?.status === 'completed' ? job.output_folder : null} onChooseAudio={() => void selectAudio()} onDropAudio={dropAudio} onScriptChange={setScript} onGenerate={() => void generate()} onCancel={() => void cancelGeneration()} onOpenOutput={() => { if (job?.output_folder) void window.legendAI.openPath(job.output_folder) }} />}
-        {view === 'editor' && <EditorView path={srtPath} cues={cues} selected={selected} splitPosition={splitPosition} notice={editorNotice} busy={editorBusy} canUndo={past.length > 0} canRedo={future.length > 0} shortcutMerge={settings.shortcut_merge} shortcutSplit={settings.shortcut_split} onOpen={() => void openSrt()} onDropSrt={dropSrt} onSave={() => void saveSrt()} onToggle={toggleCue} onSplitPositionChange={setSplitPosition} onMerge={() => void mergeCues()} onSplit={() => void splitCue()} onUndo={undo} onRedo={redo} />}
+        {view === 'editor' && <EditorView path={srtPath} cues={cues} selected={selected} splitPosition={splitPosition} notice={editorNotice} busy={editorBusy} canUndo={past.length > 0} canRedo={future.length > 0} shortcutMerge={settings.shortcut_merge} shortcutSplit={settings.shortcut_split} onOpen={() => void openSrt()} onDropSrt={dropSrt} onSave={() => void saveSrt()} onToggle={toggleCue} onSplitPositionChange={setSplitPosition} onTextChange={changeCueText} onTextCommit={commitCueText} onMerge={() => void mergeCues()} onSplit={() => void splitCue()} onUndo={undo} onRedo={redo} />}
         {view === 'history' && <HistoryView entries={history} onOpenFolder={(path) => void window.legendAI.openPath(path)} onClear={() => void clearHistory()} />}
         {view === 'help' && <HelpView appVersion={appVersion} engineVersion={engineVersion} shortcutMerge={settings.shortcut_merge} shortcutSplit={settings.shortcut_split} />}
         {view === 'settings' && <SettingsView settings={settings} notice={settingsNotice} saving={savingSettings} loaded={settingsLoaded} onChange={setSettings} onSave={() => void saveSettings()} />}

@@ -18,6 +18,8 @@ type EditorViewProps = {
   onSave: () => void
   onToggle: (index: number, extend?: boolean) => void
   onSplitPositionChange: (position: number | null) => void
+  onTextChange: (index: number, text: string) => void
+  onTextCommit: () => void
   onMerge: () => void
   onSplit: () => void
   onUndo: () => void
@@ -40,6 +42,8 @@ export function EditorView({
   onSave,
   onToggle,
   onSplitPositionChange,
+  onTextChange,
+  onTextCommit,
   onMerge,
   onSplit,
   onUndo,
@@ -95,8 +99,8 @@ export function EditorView({
           </div>
           <div className="max-h-[420px] overflow-y-auto p-2 scrollbar-thin">
             {cues.map((cue, index) => (
+              <div key={`${cue.start}-${cue.end}-${index}`}>
               <div
-                key={`${cue.start}-${cue.end}-${index}`}
                 onClick={(event) => onToggle(index, event.shiftKey)}
                 role="button"
                 tabIndex={0}
@@ -108,16 +112,24 @@ export function EditorView({
                 <span className="w-28 shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">{formatTime(cue.start)} — {formatTime(cue.end)}</span>
                 {selected.length === 1 && selected[0] === index ? (
                   <input
-                    readOnly
                     value={cue.text}
-                    aria-label="Clique entre as palavras para posicionar o corte"
+                    aria-label="Edite o texto ou clique entre as palavras para posicionar o corte"
                     onClick={(event) => event.stopPropagation()}
+                    onChange={(event) => {
+                      onTextChange(index, event.target.value)
+                      onSplitPositionChange(event.target.selectionStart)
+                    }}
+                    onBlur={onTextCommit}
                     onSelect={(event) => onSplitPositionChange(event.currentTarget.selectionStart)}
                     onKeyUp={(event) => onSplitPositionChange(event.currentTarget.selectionStart)}
-                    className="min-w-0 flex-1 cursor-text bg-transparent text-sm outline-none selection:bg-primary/35"
+                    className="min-w-0 flex-1 cursor-text rounded-md bg-surface-elevated/60 px-2 py-1 text-sm outline-none ring-1 ring-inset ring-border focus:ring-primary/60 selection:bg-primary/35"
                   />
                 ) : <span className="min-w-0 flex-1 truncate text-sm">{cue.text}</span>}
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </div>
+              {selected.length === 1 && selected[0] === index && (
+                <SplitPreview cue={cue} position={splitPosition} />
+              )}
               </div>
             ))}
           </div>
@@ -131,6 +143,60 @@ export function EditorView({
         </div>
       )}
     </section>
+  )
+}
+
+/**
+ * Mostra onde o corte vai cair antes de confirmar: o texto com um marcador na
+ * posição do cursor e as duas legendas que sairão, já com os tempos.
+ *
+ * O rateio do tempo espelha `CaptionMergeSplit.distribute` no motor —
+ * proporcional aos caracteres que não são espaço.
+ */
+function SplitPreview({ cue, position }: { cue: Cue; position: number | null }): JSX.Element | null {
+  if (position === null) return null
+
+  const before = cue.text.slice(0, position)
+  const after = cue.text.slice(position)
+  const left = before.trim()
+  const right = after.trim()
+
+  if (!left || !right) {
+    return (
+      <div className="mx-3 mb-2 rounded-lg border border-dashed border-border bg-surface-elevated/40 px-3 py-2">
+        <p className="text-[11px] text-muted-foreground">
+          Posicione o cursor entre duas palavras — os dois lados precisam ter texto.
+        </p>
+      </div>
+    )
+  }
+
+  const weight = (text: string): number => Math.max(text.replace(/\s/g, '').length, 1)
+  const share = weight(left) / (weight(left) + weight(right))
+  const middle = cue.start + Math.max(cue.end - cue.start, 0) * share
+
+  return (
+    <div className="mx-3 mb-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5">
+      <p className="font-mono text-xs leading-5">
+        <span className="text-foreground">{before}</span>
+        <span className="mx-px inline-block w-0.5 self-stretch bg-primary align-middle" style={{ height: '1.05em' }} />
+        <span className="text-foreground">{after}</span>
+      </p>
+      <div className="mt-2 grid gap-1">
+        <PreviewPart order={1} text={left} start={cue.start} end={middle} />
+        <PreviewPart order={2} text={right} start={middle} end={cue.end} />
+      </div>
+    </div>
+  )
+}
+
+function PreviewPart({ order, text, start, end }: { order: number; text: string; start: number; end: number }): JSX.Element {
+  return (
+    <div className="flex items-center gap-2.5 text-[11px]">
+      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-primary/20 font-semibold text-primary">{order}</span>
+      <span className="shrink-0 font-mono tabular-nums text-muted-foreground">{formatTime(start)} — {formatTime(end)}</span>
+      <span className="min-w-0 truncate text-muted-foreground">{text}</span>
+    </div>
   )
 }
 
