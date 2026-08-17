@@ -28,6 +28,10 @@ class Settings:
     min_duration: float = 0.45
     max_duration: float = 2.0
     max_chars: int = 10
+    # Quantas palavras podem dividir a mesma legenda, desde que caibam em
+    # max_chars. 1 mantém o estilo palavra-a-palavra (palavras pequenas ainda
+    # se juntam à vizinha, porque nunca ficam sozinhas).
+    max_words: int = 1
     margin_start: float = 0.030
     margin_end: float = 0.030
     close_gaps: bool = True

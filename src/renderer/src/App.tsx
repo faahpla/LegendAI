@@ -43,6 +43,11 @@ export default function App(): JSX.Element {
   const [engineVersion, setEngineVersion] = useState('—')
   // Retrato das legendas antes da sessão de edição de texto em andamento.
   const editAnchorRef = useRef<Cue[] | null>(null)
+  // Linha cujo texto está aberto para edição (só ao clicar no próprio texto).
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  // Rolagem da lista guardada fora do estado: a aba é desmontada ao trocar de
+  // view, e usar estado aqui provocaria re-render a cada evento de scroll.
+  const editorScrollRef = useRef(0)
 
   const audioName = useMemo(() => fileName(audioPath), [audioPath])
   const isGenerating = Boolean(job && ['queued', 'running'].includes(job.status))
@@ -192,6 +197,7 @@ export default function App(): JSX.Element {
     setCues(next)
     setSelected([])
     setSplitPosition(null)
+    setEditingIndex(null)
     setEditorNotice(notice)
   }
 
@@ -213,6 +219,18 @@ export default function App(): JSX.Element {
       pushHistory(snapshot)
       setEditorNotice('Texto da legenda atualizado.')
     }
+  }
+
+  /** Abre o texto para edição — disparado ao clicar sobre o próprio texto. */
+  function startEditingCue(index: number): void {
+    setSelected([index])
+    setEditingIndex(index)
+    setSplitPosition(null)
+  }
+
+  function stopEditingCue(): void {
+    commitCueText()
+    setEditingIndex(null)
   }
 
   function undo(): void {
@@ -272,6 +290,9 @@ export default function App(): JSX.Element {
       setSplitPosition(null)
       setPast([])
       setFuture([])
+      setEditingIndex(null)
+      editAnchorRef.current = null
+      editorScrollRef.current = 0
       setEditorNotice(`${result.cues.length} legendas carregadas.`)
     } catch (error) {
       setEditorNotice(messageFrom(error))
@@ -310,6 +331,7 @@ export default function App(): JSX.Element {
     // Trocar de linha desmonta o campo de edição sem garantia de `blur`;
     // fechamos a sessão aqui para o Ctrl+Z não perder o retrato anterior.
     commitCueText()
+    setEditingIndex(null)
     setSelected((current) => {
       if (extend && current.length > 0) {
         const anchor = current[0]
@@ -371,15 +393,28 @@ export default function App(): JSX.Element {
     }
   }
 
+  /** Grava direto no arquivo aberto, sem diálogo — comportamento de Ctrl+S. */
   async function saveSrt(): Promise<void> {
     if (!srtPath) return
+    stopEditingCue()
+    await writeSrt(srtPath, `Salvo em ${fileName(srtPath)}.`)
+  }
+
+  /** Escolhe outro destino, preservando o arquivo original. */
+  async function saveSrtAs(): Promise<void> {
+    if (!srtPath) return
+    stopEditingCue()
     const path = await window.legendAI.saveSrt(srtPath)
     if (!path) return
+    await writeSrt(path, `Salvo em ${fileName(path)}.`)
+  }
+
+  async function writeSrt(path: string, notice: string): Promise<void> {
     setEditorBusy(true)
     try {
       await request<{ path: string }>('/srt/save', 'POST', { path, cues })
       setSrtPath(path)
-      setEditorNotice('Legenda salva.')
+      setEditorNotice(notice)
     } catch (error) {
       setEditorNotice(messageFrom(error))
     } finally {
@@ -389,8 +424,8 @@ export default function App(): JSX.Element {
 
   // Os atalhos leem as ações por ref para não capturarem estado velho — os
   // handlers são recriados a cada render, o listener é registrado uma vez.
-  const actionsRef = useRef({ undo, redo, mergeCues, splitCue, saveSrt, openSrt, commitCueText })
-  actionsRef.current = { undo, redo, mergeCues, splitCue, saveSrt, openSrt, commitCueText }
+  const actionsRef = useRef({ undo, redo, mergeCues, splitCue, saveSrt, openSrt, stopEditingCue })
+  actionsRef.current = { undo, redo, mergeCues, splitCue, saveSrt, openSrt, stopEditingCue }
 
   useEffect(() => {
     if (view !== 'editor') return undefined
@@ -415,7 +450,7 @@ export default function App(): JSX.Element {
         event.preventDefault()
         void actions.openSrt()
       } else if (event.key === 'Escape') {
-        actions.commitCueText()
+        actions.stopEditingCue()
         setSelected([])
         setSplitPosition(null)
       } else if (matchesShortcut(event, settings.shortcut_merge)) {
@@ -455,7 +490,7 @@ export default function App(): JSX.Element {
 
       <main className="no-drag min-h-0 flex-1 overflow-y-auto px-8 pb-5">
         {view === 'create' && <CreateView audioName={audioName} script={script} status={createNotice} progress={job?.status === 'completed' ? 1 : job?.progress ?? null} isGenerating={isGenerating} isCancelling={Boolean(job?.cancel_requested)} outputFolder={job?.status === 'completed' ? job.output_folder : null} onChooseAudio={() => void selectAudio()} onDropAudio={dropAudio} onScriptChange={setScript} onGenerate={() => void generate()} onCancel={() => void cancelGeneration()} onOpenOutput={() => { if (job?.output_folder) void window.legendAI.openPath(job.output_folder) }} />}
-        {view === 'editor' && <EditorView path={srtPath} cues={cues} selected={selected} splitPosition={splitPosition} notice={editorNotice} busy={editorBusy} canUndo={past.length > 0} canRedo={future.length > 0} shortcutMerge={settings.shortcut_merge} shortcutSplit={settings.shortcut_split} onOpen={() => void openSrt()} onDropSrt={dropSrt} onSave={() => void saveSrt()} onToggle={toggleCue} onSplitPositionChange={setSplitPosition} onTextChange={changeCueText} onTextCommit={commitCueText} onMerge={() => void mergeCues()} onSplit={() => void splitCue()} onUndo={undo} onRedo={redo} />}
+        {view === 'editor' && <EditorView path={srtPath} cues={cues} selected={selected} splitPosition={splitPosition} notice={editorNotice} busy={editorBusy} canUndo={past.length > 0} canRedo={future.length > 0} shortcutMerge={settings.shortcut_merge} shortcutSplit={settings.shortcut_split} onOpen={() => void openSrt()} onDropSrt={dropSrt} onSave={() => void saveSrt()} onToggle={toggleCue} onSplitPositionChange={setSplitPosition} onTextChange={changeCueText} onTextCommit={stopEditingCue} editingIndex={editingIndex} onStartEditing={startEditingCue} scrollRef={editorScrollRef} onSaveAs={() => void saveSrtAs()} onMerge={() => void mergeCues()} onSplit={() => void splitCue()} onUndo={undo} onRedo={redo} />}
         {view === 'history' && <HistoryView entries={history} onOpenFolder={(path) => void window.legendAI.openPath(path)} onClear={() => void clearHistory()} />}
         {view === 'help' && <HelpView appVersion={appVersion} engineVersion={engineVersion} shortcutMerge={settings.shortcut_merge} shortcutSplit={settings.shortcut_split} />}
         {view === 'settings' && <SettingsView settings={settings} notice={settingsNotice} saving={savingSettings} loaded={settingsLoaded} onChange={setSettings} onSave={() => void saveSettings()} />}

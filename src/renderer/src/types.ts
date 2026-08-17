@@ -41,6 +41,7 @@ export type EngineSettings = {
   min_duration: number
   max_duration: number
   max_chars: number
+  max_words: number
   margin_start: number
   margin_end: number
   close_gaps: boolean
@@ -63,6 +64,7 @@ export const fallbackSettings: EngineSettings = {
   min_duration: 0.45,
   max_duration: 2,
   max_chars: 10,
+  max_words: 1,
   margin_start: 0.03,
   margin_end: 0.03,
   close_gaps: true,

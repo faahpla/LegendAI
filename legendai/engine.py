@@ -99,31 +99,65 @@ class LegendEngine:
     # limite de caracteres permanece sozinha (exceção da regra 4).
     # ------------------------------------------------------------------
     def _group_words(self, words: list[Word]) -> list[list[Word]]:
-        limit = max(self.settings.max_chars, 1)
+        """Monta as legendas respeitando dois limites: quantas palavras cabem
+        juntas (``max_words``) e quantos caracteres (``max_chars``).
+
+        Uma palavra sozinha maior que ``max_chars`` nunca é quebrada — fica
+        sozinha na legenda, que é a exceção do limite.
+        """
+        limit_chars = max(self.settings.max_chars, 1)
+        limit_words = max(self.settings.max_words, 1)
+
         groups: list[list[Word]] = []
-        pending: list[Word] = []
+        current: list[Word] = []
         for word in words:
-            if normalize_word(word.text) in self._small:
-                pending.append(word)
-                continue
-            candidate = pending + [word]
-            if pending and self._group_length(candidate) > limit:
-                # Estourou o limite: as palavras pequenas voltam para a legenda
-                # anterior (nunca ficam sozinhas) e a palavra segue sozinha.
-                if groups:
-                    groups[-1].extend(pending)
-                else:
-                    groups.append(pending)
-                groups.append([word])
-            else:
-                groups.append(candidate)
-            pending = []
-        if pending:
-            if groups:
-                groups[-1].extend(pending)
-            else:
-                groups.append(pending)
+            exceeds = current and (
+                len(current) >= limit_words
+                or self._group_length(current + [word]) > limit_chars
+            )
+            if exceeds:
+                groups.append(current)
+                current = []
+            current.append(word)
+        if current:
+            groups.append(current)
+
+        self._absorb_small_only_groups(groups, limit_chars)
         return groups
+
+    def _absorb_small_only_groups(self, groups: list[list[Word]], limit_chars: int) -> None:
+        """Palavras pequenas nunca ficam sozinhas numa legenda.
+
+        Um grupo formado só por elas é unido ao vizinho — de preferência ao
+        seguinte, porque "de Bleach" se lê como uma unidade. Se a junção para
+        frente estourar o limite de caracteres e a de trás couber, vai para
+        trás; quando nenhuma cabe, segue para frente mesmo (legibilidade vale
+        mais que o limite neste caso de borda).
+        """
+        index = 0
+        while index < len(groups):
+            group = groups[index]
+            if not all(normalize_word(word.text) in self._small for word in group):
+                index += 1
+                continue
+
+            forward = groups[index + 1] if index + 1 < len(groups) else None
+            backward = groups[index - 1] if index > 0 else None
+            if forward is not None and (
+                self._group_length(group + forward) <= limit_chars
+                or backward is None
+                or self._group_length(backward + group) > limit_chars
+            ):
+                forward[:0] = group
+                del groups[index]
+                # Não avança: o grupo unido assumiu esta posição e pode, ele
+                # mesmo, ainda ser formado apenas por palavras pequenas.
+            elif backward is not None:
+                backward.extend(group)
+                del groups[index]
+                index -= 1
+            else:
+                index += 1  # legenda única, só com palavras pequenas
 
     @staticmethod
     def _group_length(group: list[Word]) -> int:

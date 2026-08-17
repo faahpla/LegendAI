@@ -139,6 +139,7 @@ class LegendApi:
             "min_duration": float,
             "max_duration": float,
             "max_chars": int,
+            "max_words": int,
             "margin_start": float,
             "margin_end": float,
             "max_gap": float,

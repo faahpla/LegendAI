@@ -34,23 +34,80 @@ export function SettingsView({ settings, notice, saving, loaded, onChange, onSav
         <p className="mt-1 text-sm text-muted-foreground">Defina como o Legend Engine prepara as suas legendas.</p>
       </div>
       <div className="panel overflow-hidden rounded-3xl">
-        <PreferenceSection title="Leitura e tempo">
-          <div className="grid grid-cols-2 gap-4">
-            <NumberField label="Tempo mínimo" suffix="seg" value={settings.min_duration} onChange={(value) => set('min_duration', value)} />
-            <NumberField label="Tempo máximo" suffix="seg" value={settings.max_duration} onChange={(value) => set('max_duration', value)} />
-            <NumberField label="Caracteres máximos" suffix="chars" value={settings.max_chars} onChange={(value) => set('max_chars', value)} />
-            <NumberField label="Fechar vãos até" suffix="seg" value={settings.max_gap} onChange={(value) => set('max_gap', value)} />
-            <NumberField label="Margem inicial" suffix="seg" value={settings.margin_start} onChange={(value) => set('margin_start', value)} />
-            <NumberField label="Margem final" suffix="seg" value={settings.margin_end} onChange={(value) => set('margin_end', value)} />
+        <PreferenceSection title="Como as legendas são montadas">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <NumberField
+              label="Palavras por legenda"
+              suffix="palavras"
+              value={settings.max_words}
+              hint="Quantas palavras podem dividir a mesma legenda, se couberem no limite de caracteres. 1 = uma palavra por vez."
+              onChange={(value) => set('max_words', Math.max(Math.round(value), 1))}
+            />
+            <NumberField
+              label="Caracteres máximos"
+              suffix="letras"
+              value={settings.max_chars}
+              hint="Limite de letras por legenda, contando os espaços. Uma palavra maior que isso fica sozinha e nunca é cortada."
+              onChange={(value) => set('max_chars', Math.max(Math.round(value), 1))}
+            />
+          </div>
+          <p className="mt-3 rounded-lg border border-border bg-surface-elevated/40 px-3 py-2 text-[11px] leading-5 text-muted-foreground">
+            <strong className="text-foreground">Exemplo</strong> com 2 palavras e 12 letras:{' '}
+            <span className="font-mono">Quatro dos</span> (10 letras) ficam juntas ·{' '}
+            <span className="font-mono">subordinadas</span> (12) fica sozinha ·{' '}
+            <span className="font-mono">demônios primordiais</span> (20) é separada em duas.
+          </p>
+        </PreferenceSection>
+        <PreferenceSection title="Tempo na tela">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <NumberField
+              label="Tempo mínimo"
+              suffix="seg"
+              value={settings.min_duration}
+              hint="Menor tempo que uma legenda fica visível. Evita palavras que piscam rápido demais para ler."
+              onChange={(value) => set('min_duration', value)}
+            />
+            <NumberField
+              label="Tempo máximo"
+              suffix="seg"
+              value={settings.max_duration}
+              hint="Maior tempo que uma legenda fica visível, mesmo que a pausa na narração seja longa."
+              onChange={(value) => set('max_duration', value)}
+            />
+            <NumberField
+              label="Antecipar a entrada"
+              suffix="seg"
+              value={settings.margin_start}
+              hint="Faz a legenda aparecer um pouco antes da palavra ser falada, quando há espaço livre. Dá conforto de leitura."
+              onChange={(value) => set('margin_start', value)}
+            />
+            <NumberField
+              label="Atrasar a saída"
+              suffix="seg"
+              value={settings.margin_end}
+              hint="Mantém a legenda um instante depois da palavra terminar, quando há espaço livre."
+              onChange={(value) => set('margin_end', value)}
+            />
           </div>
         </PreferenceSection>
         <PreferenceSection title="Compatibilidade com o editor">
           <Toggle
-            label="Fechar espaços entre legendas"
-            hint={`Emenda pausas de até ${settings.max_gap}s. Aumente "Fechar vãos até" para eliminar também as pausas longas.`}
+            label="Emendar legendas para não piscar"
+            hint="Sem isso, a legenda desaparece por um instante entre as palavras. Ligado, o fim de uma encosta no início da seguinte."
             checked={settings.close_gaps}
             onChange={(checked) => set('close_gaps', checked)}
           />
+          {settings.close_gaps && (
+            <div className="mt-3 max-w-[240px]">
+              <NumberField
+                label="Emendar pausas de até"
+                suffix="seg"
+                value={settings.max_gap}
+                hint="Pausas menores que isso são emendadas. Pausas maiores são preservadas, porque são silêncios reais da narração — aumente se não quiser nenhum espaço."
+                onChange={(value) => set('max_gap', value)}
+              />
+            </div>
+          )}
           <div className="mt-3">
             <span className="mb-2 block text-xs text-muted-foreground">Alinhar aos quadros</span>
             <div className="flex flex-wrap gap-1.5">
@@ -103,11 +160,6 @@ export function SettingsView({ settings, notice, saving, loaded, onChange, onSav
             checked={settings.check_alignment}
             onChange={(checked) => set('check_alignment', checked)}
           />
-          {settings.check_alignment && (
-            <div className="mt-3 max-w-[220px]">
-              <NumberField label="Confiança mínima" suffix="0–1" value={settings.min_alignment_score} onChange={(value) => set('min_alignment_score', Math.min(value, 1))} />
-            </div>
-          )}
         </PreferenceSection>
         <PreferenceSection title="Atalhos do editor">
           <div className="grid grid-cols-2 gap-4">
@@ -135,10 +187,10 @@ function PreferenceSection({ title, children }: { title: string; children: React
   return <section className="border-b border-border/70 px-7 py-6"><h2 className="mb-5 text-sm font-semibold tracking-tight">{title}</h2>{children}</section>
 }
 
-function NumberField({ label, suffix, value, onChange }: { label: string; suffix: string; value: number; onChange: (value: number) => void }): JSX.Element {
+function NumberField({ label, suffix, value, hint, onChange }: { label: string; suffix: string; value: number; hint?: string; onChange: (value: number) => void }): JSX.Element {
   return (
-    <label>
-      <span className="mb-2 block text-xs text-muted-foreground">{label}</span>
+    <label className="block">
+      <span className="mb-2 block text-xs font-medium text-foreground/90">{label}</span>
       <span className="control flex h-10 items-center px-3">
         <input
           value={value}
@@ -154,6 +206,7 @@ function NumberField({ label, suffix, value, onChange }: { label: string; suffix
         />
         <span className="text-xs text-muted-foreground">{suffix}</span>
       </span>
+      {hint && <span className="mt-1.5 block text-[11px] leading-4 text-muted-foreground/80">{hint}</span>}
     </label>
   )
 }

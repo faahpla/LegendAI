@@ -1,4 +1,4 @@
 """LegendAI — sincronizador de roteiros com narração para Shorts."""
 
-__version__ = "2.1.2"
+__version__ = "2.1.3"
 APP_NAME = "LegendAI"

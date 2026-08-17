@@ -1,4 +1,4 @@
-import type { DragEvent } from 'react'
+import { useEffect, useRef, type DragEvent, type MutableRefObject } from 'react'
 import { Check, ChevronRight, FolderOpen, Merge, Redo2, Save, Scissors, Undo2 } from 'lucide-react'
 import type { Cue } from '@/types'
 
@@ -16,10 +16,14 @@ type EditorViewProps = {
   onOpen: () => void
   onDropSrt: (event: DragEvent<HTMLElement>) => void
   onSave: () => void
+  onSaveAs: () => void
   onToggle: (index: number, extend?: boolean) => void
   onSplitPositionChange: (position: number | null) => void
   onTextChange: (index: number, text: string) => void
   onTextCommit: () => void
+  editingIndex: number | null
+  onStartEditing: (index: number) => void
+  scrollRef: MutableRefObject<number>
   onMerge: () => void
   onSplit: () => void
   onUndo: () => void
@@ -40,22 +44,35 @@ export function EditorView({
   onOpen,
   onDropSrt,
   onSave,
+  onSaveAs,
   onToggle,
   onSplitPositionChange,
   onTextChange,
   onTextCommit,
+  editingIndex,
+  onStartEditing,
+  scrollRef,
   onMerge,
   onSplit,
   onUndo,
   onRedo
 }: EditorViewProps): JSX.Element {
+  // A aba é desmontada ao trocar de view; devolvemos a lista para onde estava.
+  const listRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const list = listRef.current
+    if (list) list.scrollTop = scrollRef.current
+  }, [scrollRef])
+
   const splitTarget = selected.length === 1 ? cues[selected[0]]?.text ?? '' : ''
   // As duas metades precisam ter texto após aparar espaços — mesma regra do motor.
   const canSplit = splitPosition !== null
     && Boolean(splitTarget.slice(0, splitPosition).trim())
     && Boolean(splitTarget.slice(splitPosition).trim())
-  const editorHint = selected.length === 1
+  const editorHint = editingIndex !== null
     ? canSplit ? 'Ponto de corte selecionado.' : 'Clique entre as palavras para posicionar o corte.'
+    : selected.length === 1
+    ? 'Clique no texto para editar ou marcar onde dividir.'
     : selected.length > 1
       ? `${selected.length} legendas em sequência — prontas para mesclar.`
       : notice || 'Clique para selecionar; Shift+clique marca um intervalo.'
@@ -82,7 +99,16 @@ export function EditorView({
           <button onClick={onOpen} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-surface-elevated px-3 text-sm font-medium transition-colors hover:bg-surface-hover">
             <FolderOpen className="h-3.5 w-3.5" /> Abrir SRT
           </button>
-          {path && <button onClick={onSave} disabled={busy} className="inline-flex h-9 items-center gap-2 rounded-xl bg-primary px-3 text-sm font-medium text-primary-foreground shadow-glow disabled:opacity-60"><Save className="h-3.5 w-3.5" /> Salvar</button>}
+          {path && (
+            <>
+              <button onClick={onSaveAs} disabled={busy} title="Salvar em outro arquivo" className="inline-flex h-9 items-center rounded-xl border border-border bg-surface-elevated px-3 text-sm font-medium transition-colors hover:bg-surface-hover disabled:opacity-60">
+                Salvar como…
+              </button>
+              <button onClick={onSave} disabled={busy} title={`Sobrescrever ${fileName(path)} (Ctrl+S)`} className="inline-flex h-9 items-center gap-2 rounded-xl bg-primary px-3 text-sm font-medium text-primary-foreground shadow-glow disabled:opacity-60">
+                <Save className="h-3.5 w-3.5" /> Salvar
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -97,7 +123,11 @@ export function EditorView({
             </div>
             <span className="rounded-full border border-border bg-surface-elevated px-2.5 py-1 text-xs text-muted-foreground">{selected.length} selecionada{selected.length === 1 ? '' : 's'}</span>
           </div>
-          <div className="max-h-[420px] overflow-y-auto p-2 scrollbar-thin">
+          <div
+            ref={listRef}
+            onScroll={(event) => { scrollRef.current = event.currentTarget.scrollTop }}
+            className="max-h-[420px] overflow-y-auto p-2 scrollbar-thin"
+          >
             {cues.map((cue, index) => (
               <div key={`${cue.start}-${cue.end}-${index}`}>
               <div
@@ -110,8 +140,9 @@ export function EditorView({
                   {selected.includes(index) && <Check className="h-3.5 w-3.5" />}
                 </span>
                 <span className="w-28 shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">{formatTime(cue.start)} — {formatTime(cue.end)}</span>
-                {selected.length === 1 && selected[0] === index ? (
+                {editingIndex === index ? (
                   <input
+                    autoFocus
                     value={cue.text}
                     aria-label="Edite o texto ou clique entre as palavras para posicionar o corte"
                     onClick={(event) => event.stopPropagation()}
@@ -124,12 +155,18 @@ export function EditorView({
                     onKeyUp={(event) => onSplitPositionChange(event.currentTarget.selectionStart)}
                     className="min-w-0 flex-1 cursor-text rounded-md bg-surface-elevated/60 px-2 py-1 text-sm outline-none ring-1 ring-inset ring-border focus:ring-primary/60 selection:bg-primary/35"
                   />
-                ) : <span className="min-w-0 flex-1 truncate text-sm">{cue.text}</span>}
+                ) : (
+                  <span
+                    onClick={(event) => { event.stopPropagation(); onStartEditing(index) }}
+                    title="Clique no texto para editar"
+                    className="min-w-0 flex-1 cursor-text truncate rounded-md px-2 py-1 text-sm transition-colors hover:bg-surface-elevated/70 hover:ring-1 hover:ring-inset hover:ring-border"
+                  >
+                    {cue.text}
+                  </span>
+                )}
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
               </div>
-              {selected.length === 1 && selected[0] === index && (
-                <SplitPreview cue={cue} position={splitPosition} />
-              )}
+              {editingIndex === index && <SplitPreview cue={cue} position={splitPosition} />}
               </div>
             ))}
           </div>

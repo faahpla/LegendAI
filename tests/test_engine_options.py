@@ -18,6 +18,63 @@ def make_words(spec):
     return [Word(text, start, end) for text, start, end in spec]
 
 
+def words_from(text, step=0.5):
+    """Cria palavras sequenciais a partir de uma frase."""
+    spec, t = [], 0.0
+    for token in text.split():
+        spec.append((token, t, t + step * 0.9))
+        t += step
+    return spec
+
+
+class TestWordsPerCue(unittest.TestCase):
+    """Palavras por legenda combinadas com o limite de caracteres."""
+
+    def build(self, text, max_words, max_chars):
+        settings = Settings()
+        settings.max_words = max_words
+        settings.max_chars = max_chars
+        settings.min_duration = 0.0
+        settings.margin_start = settings.margin_end = 0.0
+        settings.snap_fps = 0
+        cues = LegendEngine(settings).build(make_words(words_from(text)), total_duration=60.0)
+        return [cue.text for cue in cues]
+
+    def test_long_word_stays_alone_at_the_char_limit(self):
+        # "subordinadas" tem 12 caracteres: ocupa a legenda inteira.
+        self.assertEqual(
+            self.build("as tropas subordinadas voltaram", max_words=2, max_chars=12),
+            ["as tropas", "subordinadas", "voltaram"],
+        )
+
+    def test_two_short_words_share_the_cue(self):
+        # "Quatro dos" = 10 caracteres com o espaço, cabe em 12.
+        self.assertEqual(
+            self.build("Quatro dos guardas", max_words=2, max_chars=12),
+            ["Quatro dos", "guardas"],
+        )
+
+    def test_two_long_words_are_broken_apart(self):
+        # "demônios primordiais" = 20 caracteres: não cabe, separa.
+        self.assertEqual(
+            self.build("demônios primordiais atacaram", max_words=2, max_chars=12),
+            ["demônios", "primordiais", "atacaram"],
+        )
+
+    def test_word_limit_is_respected_even_when_chars_allow(self):
+        # Três palavras curtas caberiam em 20 chars, mas o limite é 2 palavras.
+        self.assertEqual(
+            self.build("um dois tres", max_words=2, max_chars=20),
+            ["um dois", "tres"],
+        )
+
+    def test_default_keeps_word_by_word(self):
+        self.assertEqual(
+            self.build("Ichigo despertou Bankai", max_words=1, max_chars=10),
+            ["Ichigo", "despertou", "Bankai"],
+        )
+
+
 class TestMaxChars(unittest.TestCase):
     """max_chars aparecia na tela de configurações sem efeito nenhum."""
 
@@ -32,12 +89,13 @@ class TestMaxChars(unittest.TestCase):
         cues = self.build(20, [("de", 0.0, 0.2), ("Bleach", 0.3, 0.9)])
         self.assertEqual([c.text for c in cues], ["de Bleach"])
 
-    def test_group_is_split_when_limit_is_tight(self):
-        # "de Bleach" tem 9 caracteres; com limite 6 a palavra fica sozinha.
+    def test_small_word_leads_the_next_when_limit_is_tight(self):
+        # Nenhum par cabe em 6 caracteres, então a palavra pequena escolhe um
+        # lado: vai para frente, porque "de Bleach" se lê como uma unidade.
         cues = self.build(6, [
             ("Naruto", 0.0, 0.6), ("de", 0.7, 0.9), ("Bleach", 1.0, 1.6),
         ])
-        self.assertEqual([c.text for c in cues], ["Naruto de", "Bleach"])
+        self.assertEqual([c.text for c in cues], ["Naruto", "de Bleach"])
 
     def test_no_cue_exceeds_limit_when_possible(self):
         cues = self.build(12, [
