@@ -48,6 +48,9 @@ export default function App(): JSX.Element {
   // Rolagem da lista guardada fora do estado: a aba é desmontada ao trocar de
   // view, e usar estado aqui provocaria re-render a cada evento de scroll.
   const editorScrollRef = useRef(0)
+  // Incrementa a cada SRT aberto: é o sinal para a lista voltar ao topo, já
+  // que trocar de arquivo não remonta o componente.
+  const [loadToken, setLoadToken] = useState(0)
 
   const audioName = useMemo(() => fileName(audioPath), [audioPath])
   const isGenerating = Boolean(job && ['queued', 'running'].includes(job.status))
@@ -292,7 +295,7 @@ export default function App(): JSX.Element {
       setFuture([])
       setEditingIndex(null)
       editAnchorRef.current = null
-      editorScrollRef.current = 0
+      setLoadToken((value) => value + 1)
       setEditorNotice(`${result.cues.length} legendas carregadas.`)
     } catch (error) {
       setEditorNotice(messageFrom(error))
@@ -490,7 +493,7 @@ export default function App(): JSX.Element {
 
       <main className="no-drag min-h-0 flex-1 overflow-y-auto px-8 pb-5">
         {view === 'create' && <CreateView audioName={audioName} script={script} status={createNotice} progress={job?.status === 'completed' ? 1 : job?.progress ?? null} isGenerating={isGenerating} isCancelling={Boolean(job?.cancel_requested)} outputFolder={job?.status === 'completed' ? job.output_folder : null} onChooseAudio={() => void selectAudio()} onDropAudio={dropAudio} onScriptChange={setScript} onGenerate={() => void generate()} onCancel={() => void cancelGeneration()} onOpenOutput={() => { if (job?.output_folder) void window.legendAI.openPath(job.output_folder) }} />}
-        {view === 'editor' && <EditorView path={srtPath} cues={cues} selected={selected} splitPosition={splitPosition} notice={editorNotice} busy={editorBusy} canUndo={past.length > 0} canRedo={future.length > 0} shortcutMerge={settings.shortcut_merge} shortcutSplit={settings.shortcut_split} onOpen={() => void openSrt()} onDropSrt={dropSrt} onSave={() => void saveSrt()} onToggle={toggleCue} onSplitPositionChange={setSplitPosition} onTextChange={changeCueText} onTextCommit={stopEditingCue} editingIndex={editingIndex} onStartEditing={startEditingCue} scrollRef={editorScrollRef} onSaveAs={() => void saveSrtAs()} onMerge={() => void mergeCues()} onSplit={() => void splitCue()} onUndo={undo} onRedo={redo} />}
+        {view === 'editor' && <EditorView path={srtPath} cues={cues} selected={selected} splitPosition={splitPosition} notice={editorNotice} busy={editorBusy} canUndo={past.length > 0} canRedo={future.length > 0} shortcutMerge={settings.shortcut_merge} shortcutSplit={settings.shortcut_split} onOpen={() => void openSrt()} onDropSrt={dropSrt} onSave={() => void saveSrt()} onToggle={toggleCue} onSplitPositionChange={setSplitPosition} onTextChange={changeCueText} onTextCommit={stopEditingCue} editingIndex={editingIndex} onStartEditing={startEditingCue} scrollRef={editorScrollRef} loadToken={loadToken} onSaveAs={() => void saveSrtAs()} onMerge={() => void mergeCues()} onSplit={() => void splitCue()} onUndo={undo} onRedo={redo} />}
         {view === 'history' && <HistoryView entries={history} onOpenFolder={(path) => void window.legendAI.openPath(path)} onClear={() => void clearHistory()} />}
         {view === 'help' && <HelpView appVersion={appVersion} engineVersion={engineVersion} shortcutMerge={settings.shortcut_merge} shortcutSplit={settings.shortcut_split} />}
         {view === 'settings' && <SettingsView settings={settings} notice={settingsNotice} saving={savingSettings} loaded={settingsLoaded} onChange={setSettings} onSave={() => void saveSettings()} />}

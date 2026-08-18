@@ -24,6 +24,7 @@ type EditorViewProps = {
   editingIndex: number | null
   onStartEditing: (index: number) => void
   scrollRef: MutableRefObject<number>
+  loadToken: number
   onMerge: () => void
   onSplit: () => void
   onUndo: () => void
@@ -52,17 +53,28 @@ export function EditorView({
   editingIndex,
   onStartEditing,
   scrollRef,
+  loadToken,
   onMerge,
   onSplit,
   onUndo,
   onRedo
 }: EditorViewProps): JSX.Element {
-  // A aba é desmontada ao trocar de view; devolvemos a lista para onde estava.
+  // Ao voltar para a aba, a lista precisa retomar de onde estava; ao abrir
+  // outro SRT, precisa começar do topo. Trocar de arquivo não remonta este
+  // componente, então o token de carregamento é o que separa os dois casos.
   const listRef = useRef<HTMLDivElement>(null)
+  const seenTokenRef = useRef(loadToken)
   useEffect(() => {
     const list = listRef.current
-    if (list) list.scrollTop = scrollRef.current
-  }, [scrollRef])
+    if (!list) return
+    if (seenTokenRef.current !== loadToken) {
+      seenTokenRef.current = loadToken
+      scrollRef.current = 0
+      list.scrollTop = 0
+      return
+    }
+    list.scrollTop = scrollRef.current
+  }, [loadToken, scrollRef])
 
   const splitTarget = selected.length === 1 ? cues[selected[0]]?.text ?? '' : ''
   // As duas metades precisam ter texto após aparar espaços — mesma regra do motor.
