@@ -1,5 +1,5 @@
 import type { DragEvent } from 'react'
-import { ChevronRight, FileAudio, FileText, FolderOpen, LoaderCircle, Sparkles, UploadCloud, X } from 'lucide-react'
+import { ChevronRight, FileAudio, FileText, FolderOpen, LoaderCircle, Scissors, Sparkles, UploadCloud, X } from 'lucide-react'
 
 type CreateViewProps = {
   audioName?: string
@@ -9,12 +9,15 @@ type CreateViewProps = {
   isGenerating: boolean
   isCancelling: boolean
   outputFolder: string | null
+  /** SRT recém-gerado, quando houver: habilita o atalho para a aba Ajustar. */
+  generatedSrt: string | null
   onChooseAudio: () => void
   onDropAudio: (event: DragEvent<HTMLElement>) => void
   onScriptChange: (value: string) => void
   onGenerate: () => void
   onCancel: () => void
   onOpenOutput: () => void
+  onAdjust: () => void
 }
 
 export function CreateView({
@@ -25,12 +28,14 @@ export function CreateView({
   isGenerating,
   isCancelling,
   outputFolder,
+  generatedSrt,
   onChooseAudio,
   onDropAudio,
   onScriptChange,
   onGenerate,
   onCancel,
-  onOpenOutput
+  onOpenOutput,
+  onAdjust
 }: CreateViewProps): JSX.Element {
   return (
     <section
@@ -101,6 +106,11 @@ export function CreateView({
             )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            {generatedSrt && !isGenerating && (
+              <button onClick={onAdjust} title="Abrir a legenda gerada na aba Ajustar" className="inline-flex h-10 items-center gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3 text-xs font-medium text-foreground transition-colors hover:bg-primary/20">
+                <Scissors className="h-3.5 w-3.5 text-primary" /> Ajustar legendas
+              </button>
+            )}
             {outputFolder && !isGenerating && (
               <button onClick={onOpenOutput} className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-surface-elevated px-3 text-xs font-medium transition-colors hover:bg-surface-hover">
                 <FolderOpen className="h-3.5 w-3.5" /> Abrir pasta
