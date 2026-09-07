@@ -1,5 +1,5 @@
 import { useEffect, useRef, type DragEvent, type MutableRefObject } from 'react'
-import { Check, ChevronRight, FolderOpen, Merge, Redo2, Save, Scissors, Undo2 } from 'lucide-react'
+import { Check, ChevronRight, FolderOpen, Merge, Plus, Redo2, Save, Scissors, Undo2 } from 'lucide-react'
 import type { Cue } from '@/types'
 
 type EditorViewProps = {
@@ -26,6 +26,7 @@ type EditorViewProps = {
   scrollRef: MutableRefObject<number>
   loadToken: number
   onMerge: () => void
+  onMergeWithNext: (index: number) => void
   onSplit: () => void
   onUndo: () => void
   onRedo: () => void
@@ -55,6 +56,7 @@ export function EditorView({
   scrollRef,
   loadToken,
   onMerge,
+  onMergeWithNext,
   onSplit,
   onUndo,
   onRedo
@@ -179,6 +181,9 @@ export function EditorView({
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
               </div>
               {editingIndex === index && <SplitPreview cue={cue} position={splitPosition} />}
+              {index < cues.length - 1 && (
+                <MergeGap disabled={busy} onMerge={() => onMergeWithNext(index)} />
+              )}
               </div>
             ))}
           </div>
@@ -192,6 +197,30 @@ export function EditorView({
         </div>
       )}
     </section>
+  )
+}
+
+/**
+ * Faixa fina entre duas legendas com um "+" que junta as duas em um clique.
+ * Fica discreta até o mouse chegar perto, para não poluir uma lista longa.
+ */
+function MergeGap({ disabled, onMerge }: { disabled: boolean; onMerge: () => void }): JSX.Element {
+  return (
+    <div className="group/gap relative h-2.5">
+      <span className="pointer-events-none absolute inset-x-4 top-1/2 h-px -translate-y-1/2 bg-transparent transition-colors group-hover/gap:bg-primary/30" />
+      {/* Alinhado ao centro da caixa de marcar da linha (px-3 + metade de w-5)
+          para ficar sempre na mesma coluna, fácil de encontrar. */}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={(event) => { event.stopPropagation(); onMerge() }}
+        title="Mesclar esta legenda com a de baixo"
+        aria-label="Mesclar esta legenda com a de baixo"
+        className="absolute left-[22px] top-1/2 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-surface-elevated text-muted-foreground opacity-0 transition-all hover:border-primary hover:bg-primary hover:text-primary-foreground focus-visible:opacity-100 group-hover/gap:opacity-100 disabled:cursor-not-allowed"
+      >
+        <Plus className="h-3 w-3" />
+      </button>
+    </div>
   )
 }
 

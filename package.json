@@ -1,6 +1,6 @@
 {
   "name": "legendai-desktop",
-  "version": "2.1.5",
+  "version": "2.1.6",
   "description": "LegendAI — sincronização local de roteiros e narrações.",
   "main": "./out/main/index.js",
   "private": true,

@@ -381,10 +381,20 @@ export default function App(): JSX.Element {
 
   async function mergeCues(): Promise<void> {
     if (selected.length < 2) return
+    await runMerge(selected)
+  }
+
+  /** Mescla a legenda com a seguinte — o "+" que aparece entre as linhas. */
+  async function mergeWithNext(index: number): Promise<void> {
+    if (index < 0 || index + 1 >= cues.length) return
+    await runMerge([index, index + 1])
+  }
+
+  async function runMerge(indices: number[]): Promise<void> {
     commitCueText()
     setEditorBusy(true)
     try {
-      const result = await request<CuesResult>('/srt/merge', 'POST', { cues, indices: selected })
+      const result = await request<CuesResult>('/srt/merge', 'POST', { cues, indices })
       commitCues(result.cues, 'Legendas mescladas.')
     } catch (error) {
       setEditorNotice(messageFrom(error))
@@ -517,7 +527,7 @@ export default function App(): JSX.Element {
 
       <main className="no-drag min-h-0 flex-1 overflow-y-auto px-8 pb-5">
         {view === 'create' && <CreateView audioName={audioName} script={script} status={createNotice} progress={job?.status === 'completed' ? 1 : job?.progress ?? null} isGenerating={isGenerating} isCancelling={Boolean(job?.cancel_requested)} outputFolder={job?.status === 'completed' ? job.output_folder : null} onChooseAudio={() => void selectAudio()} onDropAudio={dropAudio} onScriptChange={setScript} onGenerate={() => void generate()} onCancel={() => void cancelGeneration()} generatedSrt={generatedSrt} onAdjust={() => void adjustGenerated()} onOpenOutput={() => { if (job?.output_folder) void window.legendAI.openPath(job.output_folder) }} />}
-        {view === 'editor' && <EditorView path={srtPath} cues={cues} selected={selected} splitPosition={splitPosition} notice={editorNotice} busy={editorBusy} canUndo={past.length > 0} canRedo={future.length > 0} shortcutMerge={settings.shortcut_merge} shortcutSplit={settings.shortcut_split} onOpen={() => void openSrt()} onDropSrt={dropSrt} onSave={() => void saveSrt()} onToggle={toggleCue} onSplitPositionChange={setSplitPosition} onTextChange={changeCueText} onTextCommit={stopEditingCue} editingIndex={editingIndex} onStartEditing={startEditingCue} scrollRef={editorScrollRef} loadToken={loadToken} onSaveAs={() => void saveSrtAs()} onMerge={() => void mergeCues()} onSplit={() => void splitCue()} onUndo={undo} onRedo={redo} />}
+        {view === 'editor' && <EditorView path={srtPath} cues={cues} selected={selected} splitPosition={splitPosition} notice={editorNotice} busy={editorBusy} canUndo={past.length > 0} canRedo={future.length > 0} shortcutMerge={settings.shortcut_merge} shortcutSplit={settings.shortcut_split} onOpen={() => void openSrt()} onDropSrt={dropSrt} onSave={() => void saveSrt()} onToggle={toggleCue} onSplitPositionChange={setSplitPosition} onTextChange={changeCueText} onTextCommit={stopEditingCue} editingIndex={editingIndex} onStartEditing={startEditingCue} scrollRef={editorScrollRef} loadToken={loadToken} onSaveAs={() => void saveSrtAs()} onMerge={() => void mergeCues()} onMergeWithNext={(index) => void mergeWithNext(index)} onSplit={() => void splitCue()} onUndo={undo} onRedo={redo} />}
         {view === 'history' && <HistoryView entries={history} onOpenFolder={(path) => void window.legendAI.openPath(path)} onClear={() => void clearHistory()} />}
         {view === 'help' && <HelpView appVersion={appVersion} engineVersion={engineVersion} shortcutMerge={settings.shortcut_merge} shortcutSplit={settings.shortcut_split} />}
         {view === 'settings' && <SettingsView settings={settings} notice={settingsNotice} saving={savingSettings} loaded={settingsLoaded} onChange={setSettings} onSave={() => void saveSettings()} />}
