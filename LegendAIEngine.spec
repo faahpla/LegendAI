@@ -32,9 +32,13 @@ WHISPERX_USADO = [
     "whisperx.log_utils",
 ]
 
-# O alinhamento usa Wav2Vec2ForCTC e Wav2Vec2Processor; `auto` é o mapa que os
-# resolve pelo nome. O resto das arquiteturas não é carregado nunca.
-MODELOS_MANTIDOS = {"wav2vec2", "auto"}
+# As três arquiteturas que o alinhamento realmente carrega, conferidas olhando
+# o `sys.modules` depois de abrir o modelo de verdade. `wav2vec2` é o modelo,
+# `auto` é o mapa que o resolve pelo nome e `encoder_decoder` entra de carona
+# no `AutoTokenizer`, de que o Wav2Vec2Processor depende. Sem esta última o
+# processador não abre — e o erro só aparece com um modelo em mãos, não na
+# importação.
+MODELOS_MANTIDOS = {"wav2vec2", "auto", "encoder_decoder"}
 
 # Pacotes que só existem para transcrever, separar locutores ou treinar.
 EXCLUIDOS = [
