@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import sys
 import threading
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -356,12 +357,65 @@ class ApiRequestHandler(BaseHTTPRequestHandler):
         self._send_json(status, {"error": message})
 
 
+def _selftest(audio_path: str, script: str) -> int:
+    """Gera uma legenda e sai, sem abrir servidor nem interface.
+
+    É assim que se confere um bundle novo do PyInstaller: um módulo deixado de
+    fora não reclama na abertura do processo, só na hora em que alguém o
+    importa de verdade — e isso acontece no meio do alinhamento. Herdado do
+    antigo `app.py --selftest`, que saiu junto com a interface em Tk.
+
+    O relatório vai para um arquivo além da saída padrão porque o executável é
+    empacotado sem console: ali o `print` não tem para onde ir, e o teste que
+    só imprime não conta nada a quem precisa do resultado.
+    """
+    registro = Settings().path.parent / "selftest.log"
+    linhas: list[str] = []
+
+    def registrar(texto: str) -> None:
+        linhas.append(texto)
+        if sys.stdout is not None:
+            print(texto, flush=True)
+        try:
+            registro.parent.mkdir(parents=True, exist_ok=True)
+            registro.write_text("\n".join(linhas) + "\n", encoding="utf-8")
+        except OSError:
+            pass  # sem o arquivo ainda resta o código de saída
+
+    registrar(f"LegendAI {__version__} — {audio_path}")
+    try:
+        resultado = generate_subtitles(
+            Path(audio_path), script, Settings(),
+            lambda mensagem, fracao: registrar(f"[{fracao:.0%}] {mensagem}"),
+        )
+    except Exception as erro:  # noqa: BLE001 - o relatório é o produto aqui
+        registrar(f"FALHOU: {type(erro).__name__}: {erro}")
+        return 1
+
+    registrar(f"OK: {len(resultado.cues)} legendas geradas")
+    for arquivo in resultado.files:
+        registrar(f"  -> {arquivo}")
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Backend local do LegendAI")
-    parser.add_argument("--port", type=int, required=True)
+    parser.add_argument("--port", type=int)
+    parser.add_argument(
+        "--selftest",
+        nargs=2,
+        metavar=("AUDIO", "ROTEIRO"),
+        help="Gera uma legenda e encerra, para validar o executável.",
+    )
     args = parser.parse_args()
 
     prepare_runtime_environment()
+
+    if args.selftest:
+        raise SystemExit(_selftest(*args.selftest))
+    if args.port is None:
+        parser.error("informe --port (servidor) ou --selftest (validação)")
+
     ApiRequestHandler.api = LegendApi()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), ApiRequestHandler)
     print(f"LegendAI backend listening on {args.port}", flush=True)

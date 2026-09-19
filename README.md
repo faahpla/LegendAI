@@ -57,6 +57,5 @@ Use `minor` ou `major` no lugar de `patch` quando apropriado.
 src/                 Interface Electron/React
 legendai/            Motor Python, alinhamento e exportação
 assets/              Logo e ícone do aplicativo
-installer/           Instalador local de contingência
 .github/workflows/   Publicação automática de releases
 ```

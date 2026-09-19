@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import re
-import shutil
 import subprocess
 import sys
 import unicodedata
@@ -26,16 +25,6 @@ def bundled_ffmpeg_dir() -> Path | None:
     return None
 
 
-def ffmpeg_executable(name: str) -> str | None:
-    """Resolve um binário do FFmpeg, priorizando a versão do LegendAI."""
-    bundled = bundled_ffmpeg_dir()
-    if bundled is not None:
-        candidate = bundled / f"{name}.exe"
-        if candidate.exists():
-            return str(candidate)
-    return shutil.which(name)
-
-
 def prepare_runtime_environment() -> None:
     """Configura recursos locais para executar sem instalações externas."""
     ffmpeg_dir = bundled_ffmpeg_dir()
@@ -48,10 +37,6 @@ def prepare_runtime_environment() -> None:
     nltk_data = resource_path("vendor", "nltk_data")
     if nltk_data.exists():
         os.environ["NLTK_DATA"] = str(nltk_data)
-
-
-def ffmpeg_available() -> bool:
-    return ffmpeg_executable("ffmpeg") is not None
 
 
 def open_folder(path: Path) -> None:
@@ -121,20 +106,3 @@ def ass_timestamp(seconds: float) -> str:
     minutes, rem = divmod(rem, 6_000)
     secs, cs = divmod(rem, 100)
     return f"{hours:d}:{minutes:02d}:{secs:02d}.{cs:02d}"
-
-
-def audio_duration_seconds(path: Path) -> float | None:
-    """Duração via ffprobe; None se indisponível."""
-    ffprobe = ffmpeg_executable("ffprobe")
-    if not ffprobe:
-        return None
-    try:
-        out = subprocess.run(
-            [ffprobe, "-v", "error", "-show_entries", "format=duration",
-             "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
-            capture_output=True, text=True, timeout=30, check=True,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-        return float(out.stdout.strip())
-    except (subprocess.SubprocessError, ValueError):
-        return None
