@@ -25,7 +25,7 @@ export function HelpView({ appVersion, engineVersion, shortcutMerge, shortcutSpl
     { keys: 'Ctrl+O', action: 'Abrir um SRT' },
     { keys: 'Clique', action: 'Selecionar uma legenda' },
     { keys: 'Shift+Clique', action: 'Selecionar um intervalo de legendas' },
-    { keys: 'Duplo clique', action: 'Posicionar o corte no texto' },
+    { keys: 'Clique no texto', action: 'Editar a legenda e posicionar o corte' },
     { keys: 'Esc', action: 'Limpar a seleção' }
   ]
 
