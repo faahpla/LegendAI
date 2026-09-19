@@ -12,6 +12,7 @@ export function HelpView({ appVersion, engineVersion, shortcutMerge, shortcutSpl
     'Na aba Criar, escolha (ou arraste) o áudio da narração.',
     'Cole no campo Roteiro exatamente o texto que deve aparecer no vídeo.',
     'Clique em Gerar legendas — o LegendAI descobre o tempo de cada palavra e salva o SRT/ASS ao lado do áudio.',
+    'Só na primeira geração ele baixa o modelo de alinhamento (cerca de 1,2 GB, guardado pela metade em disco). Daí em diante trabalha sem internet.',
     'Use a aba Ajustar para mesclar ou dividir blocos e salve o arquivo.',
     'Importe o SRT no DaVinci Resolve, Premiere ou CapCut.'
   ]

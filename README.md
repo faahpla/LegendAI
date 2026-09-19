@@ -7,7 +7,9 @@ tempos das palavras, nunca para substituir, corrigir ou transcrever o texto.
 ## O que entrega
 
 - Entrada de áudio e roteiro final.
-- Alinhamento temporal local com WhisperX.
+- Alinhamento temporal local com WhisperX. O modelo é baixado na primeira
+  geração e guardado em `%APPDATA%/LegendAI/models`; depois disso o aplicativo
+  trabalha sem internet.
 - Legend Engine com regras de leitura, duração, margens e ausência de
   sobreposição.
 - Exportação SRT e ASS em UTF-8.

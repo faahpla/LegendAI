@@ -1,4 +1,10 @@
-"""Prepara os recursos grandes que não devem ser versionados no Git."""
+"""Prepara o FFmpeg, que é grande demais para ser versionado no Git.
+
+O modelo de alinhamento já morou aqui. Ele saiu porque eram 1,2 GB dentro do
+instalador, baixados na máquina de quem compila para serem entregues a todo
+mundo: agora quem o busca é o próprio aplicativo, na primeira geração, e em
+metade do tamanho (ver `legendai/model_store.py`).
+"""
 
 from __future__ import annotations
 
@@ -8,37 +14,10 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
-from huggingface_hub import snapshot_download
-
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 VENDOR_DIR = PROJECT_ROOT / "vendor"
-MODEL_DIR = VENDOR_DIR / "models" / "pt"
 FFMPEG_DIR = VENDOR_DIR / "ffmpeg"
-MODEL_REPOSITORY = "jonatasgrosman/wav2vec2-large-xlsr-53-portuguese"
 FFMPEG_ARCHIVE = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full.7z"
-MODEL_FILES = [
-    "config.json",
-    "preprocessor_config.json",
-    "pytorch_model.bin",
-    "special_tokens_map.json",
-    "vocab.json",
-]
-
-
-def ensure_model() -> None:
-    if all((MODEL_DIR / file_name).exists() for file_name in MODEL_FILES):
-        print("Modelo de alinhamento já disponível.")
-        return
-
-    print("Baixando o modelo de alinhamento em português...")
-    MODEL_DIR.mkdir(parents=True, exist_ok=True)
-    snapshot_download(
-        repo_id=MODEL_REPOSITORY,
-        local_dir=MODEL_DIR,
-        allow_patterns=MODEL_FILES,
-    )
-    shutil.rmtree(MODEL_DIR / ".cache", ignore_errors=True)
 
 
 def find_7zip() -> str:
@@ -75,7 +54,6 @@ def ensure_ffmpeg() -> None:
 
 
 def main() -> None:
-    ensure_model()
     ensure_ffmpeg()
     print("Recursos offline prontos.")
 

@@ -13,7 +13,8 @@ from pathlib import Path
 from typing import Callable
 
 from .engine import Word
-from .utils import normalize_word, prepare_runtime_environment, resource_path, strip_accents
+from .model_store import ensure_model
+from .utils import normalize_word, prepare_runtime_environment, strip_accents
 
 ProgressFn = Callable[[str, float], None]
 
@@ -63,22 +64,46 @@ class WhisperXAligner:
     def _ensure_model(self, progress: ProgressFn) -> None:
         if self._model is not None:
             return
-        progress("Carregando WhisperX (modelo de alinhamento)...", 0.10)
+        # Carregar o torch e o transformers leva uns dez segundos, e sem um
+        # aviso antes disso a tela fica parada sem dizer no quê.
+        progress("Preparando o alinhamento...", 0.01)
         prepare_runtime_environment()
+        # Pode baixar o modelo, se esta for a primeira geração da máquina.
+        pasta = ensure_model(self.language, progress)
+
+        progress("Carregando WhisperX (modelo de alinhamento)...", 0.10)
         import whisperx
 
-        bundled_model = resource_path("vendor", "models", self.language)
-        if (bundled_model / "config.json").exists():
-            self._model, self._metadata = whisperx.load_align_model(
-                language_code=self.language,
-                device=self.device,
-                model_name=str(bundled_model),
-                model_cache_only=True,
-            )
-        else:
+        if pasta is None:
+            # Idioma atendido por um pacote do torchaudio: quem cuida do
+            # download é o próprio whisperx.
             self._model, self._metadata = whisperx.load_align_model(
                 language_code=self.language, device=self.device
             )
+        else:
+            self._model, self._metadata = whisperx.load_align_model(
+                language_code=self.language,
+                device=self.device,
+                model_name=str(pasta),
+                model_cache_only=True,
+            )
+        self._model = self._precisao_do_dispositivo(self._model)
+
+    def _precisao_do_dispositivo(self, modelo):
+        """Garante float32 quando a conta vai rodar na CPU.
+
+        O modelo fica em meia precisão no disco, e o `from_pretrained` monta
+        float32 sem que se peça nada. Se alguma versão do transformers passar a
+        respeitar o dtype gravado, a conta cairia em meia precisão na CPU —
+        onde parte das operações do wav2vec2 simplesmente não existe. A guarda
+        custa duas linhas e evita um erro que só apareceria depois de
+        instalado.
+        """
+        import torch
+
+        if self.device == "cpu" and next(modelo.parameters()).dtype == torch.float16:
+            return modelo.float()
+        return modelo
 
     def align(
         self, audio_path: Path, script: str, progress: ProgressFn
