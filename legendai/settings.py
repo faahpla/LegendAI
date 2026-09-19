@@ -7,12 +7,22 @@ import os
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
-DEFAULT_SMALL_WORDS = [
-    "a", "à", "o", "os", "as", "e", "ou",
-    "de", "da", "do", "das", "dos",
-    "em", "no", "na", "nos", "nas",
-    "um", "uma", "uns", "umas",
-    "pro", "pra", "com", "por", "sem",
+# Palavras de ligação: artigos, preposições, contrações e as conjunções que
+# puxam o que vem depois. São as palavras que não se leem sozinhas — "o" pede
+# o substantivo, "de" pede o complemento —, então elas abrem a legenda da
+# palavra que introduzem em vez de fechar a anterior.
+DEFAULT_LINKING_WORDS = [
+    # artigos
+    "o", "a", "os", "as", "um", "uma", "uns", "umas",
+    # preposições
+    "de", "em", "por", "com", "sem", "para", "pra", "pro", "pras", "pros",
+    "até", "sob", "sobre", "entre", "após", "desde", "contra", "perante",
+    # contrações de preposição com artigo
+    "do", "da", "dos", "das", "no", "na", "nos", "nas",
+    "ao", "aos", "à", "às", "num", "numa", "nuns", "numas",
+    "dum", "duma", "duns", "dumas", "pelo", "pela", "pelos", "pelas",
+    # conjunções
+    "e", "ou",
 ]
 
 
@@ -56,7 +66,10 @@ class Settings:
     # alinhamento ficar abaixo do limite, a geração falha avisando o usuário.
     check_alignment: bool = True
     min_alignment_score: float = 0.35
-    small_words: list[str] = field(default_factory=lambda: list(DEFAULT_SMALL_WORDS))
+    # Renomeado de `small_words`: a regra deixou de ser o tamanho da palavra e
+    # passou a ser a função dela na frase. Um settings.json antigo simplesmente
+    # não traz esta chave e recebe a lista nova, que é o desejável.
+    linking_words: list[str] = field(default_factory=lambda: list(DEFAULT_LINKING_WORDS))
 
     @property
     def path(self) -> Path:

@@ -40,7 +40,7 @@ class LegendEngine:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self._small = {normalize_word(w) for w in settings.small_words}
+        self._linking = {normalize_word(w) for w in settings.linking_words}
 
     def build(self, words: list[Word], total_duration: float | None = None) -> list[Cue]:
         if not words:
@@ -93,10 +93,10 @@ class LegendEngine:
             cursor += share
 
     # ------------------------------------------------------------------
-    # Regras 2, 3 e 4: uma palavra por legenda; palavras pequenas nunca
-    # ficam sozinhas — agrupam com a seguinte (ou com a anterior no fim).
-    # Palavras nunca são quebradas (regra 9); uma palavra maior que o
-    # limite de caracteres permanece sozinha (exceção da regra 4).
+    # Regras 2, 3 e 4: uma palavra por legenda; palavras de ligação nunca
+    # ficam sozinhas nem fecham uma legenda — elas abrem a legenda da palavra
+    # que introduzem. Palavras nunca são quebradas (regra 9); uma palavra
+    # maior que o limite de caracteres permanece sozinha (exceção da regra 4).
     # ------------------------------------------------------------------
     def _group_words(self, words: list[Word]) -> list[list[Word]]:
         """Monta as legendas respeitando dois limites: quantas palavras cabem
@@ -116,48 +116,68 @@ class LegendEngine:
                 or self._group_length(current + [word]) > limit_chars
             )
             if exceeds:
-                groups.append(current)
-                current = []
+                # O artigo que cairia no fim da legenda desce junto com o
+                # substantivo: "Quatro dos | guardas" vira "Quatro | dos
+                # guardas". Sem isto o limite corta exatamente onde a frase
+                # não pode ser cortada.
+                carried = self._trailing_linking_words(current)
+                # Grupo feito só de ligação não tem o que separar: fecha assim
+                # mesmo e a absorção logo abaixo o encosta na legenda seguinte.
+                if len(carried) == len(current):
+                    carried = []
+                groups.append(current[: len(current) - len(carried)])
+                current = carried
             current.append(word)
         if current:
             groups.append(current)
 
-        self._absorb_small_only_groups(groups, limit_chars)
+        self._absorb_linking_only_groups(groups)
         return groups
 
-    def _absorb_small_only_groups(self, groups: list[list[Word]], limit_chars: int) -> None:
-        """Palavras pequenas nunca ficam sozinhas numa legenda.
+    def _trailing_linking_words(self, group: list[Word]) -> list[Word]:
+        """A sequência de palavras de ligação presa ao fim do grupo.
 
-        Um grupo formado só por elas é unido ao vizinho — de preferência ao
-        seguinte, porque "de Bleach" se lê como uma unidade. Se a junção para
-        frente estourar o limite de caracteres e a de trás couber, vai para
-        trás; quando nenhuma cabe, segue para frente mesmo (legibilidade vale
-        mais que o limite neste caso de borda).
+        Quase sempre uma só ("viu **o**"), mas podem ser duas em "vai **para
+        a** praia". Devolve lista vazia quando o grupo termina numa palavra
+        que se sustenta sozinha.
+        """
+        index = len(group)
+        while index > 0 and normalize_word(group[index - 1].text) in self._linking:
+            index -= 1
+        return group[index:]
+
+    def _absorb_linking_only_groups(self, groups: list[list[Word]]) -> None:
+        """Palavras de ligação nunca ficam sozinhas numa legenda.
+
+        Um grupo formado só por elas é unido ao **seguinte**, sempre: o artigo
+        pertence ao substantivo que introduz, e "de Bleach" só se lê como
+        unidade nessa ordem. Quando a junção estoura ``max_chars`` ela vale
+        assim mesmo — é a mesma exceção já aberta para a palavra longa demais,
+        e uma legenda com um artigo solto é pior que uma legenda comprida.
+
+        Só no fim do roteiro, onde não existe um seguinte, a ligação recua
+        para a legenda anterior.
         """
         index = 0
         while index < len(groups):
             group = groups[index]
-            if not all(normalize_word(word.text) in self._small for word in group):
+            if not all(normalize_word(word.text) in self._linking for word in group):
                 index += 1
                 continue
 
             forward = groups[index + 1] if index + 1 < len(groups) else None
             backward = groups[index - 1] if index > 0 else None
-            if forward is not None and (
-                self._group_length(group + forward) <= limit_chars
-                or backward is None
-                or self._group_length(backward + group) > limit_chars
-            ):
+            if forward is not None:
                 forward[:0] = group
                 del groups[index]
                 # Não avança: o grupo unido assumiu esta posição e pode, ele
-                # mesmo, ainda ser formado apenas por palavras pequenas.
+                # mesmo, ainda ser formado apenas por palavras de ligação.
             elif backward is not None:
                 backward.extend(group)
                 del groups[index]
                 index -= 1
             else:
-                index += 1  # legenda única, só com palavras pequenas
+                index += 1  # legenda única, só com palavras de ligação
 
     @staticmethod
     def _group_length(group: list[Word]) -> int:

@@ -53,9 +53,11 @@ export function SettingsView({ settings, notice, saving, loaded, onChange, onSav
           </div>
           <p className="mt-3 rounded-lg border border-border bg-surface-elevated/40 px-3 py-2 text-[11px] leading-5 text-muted-foreground">
             <strong className="text-foreground">Exemplo</strong> com 2 palavras e 12 letras:{' '}
-            <span className="font-mono">Quatro dos</span> (10 letras) ficam juntas ·{' '}
+            <span className="font-mono">as tropas</span> (9 letras) ficam juntas ·{' '}
             <span className="font-mono">subordinadas</span> (12) fica sozinha ·{' '}
-            <span className="font-mono">demônios primordiais</span> (20) é separada em duas.
+            <span className="font-mono">demônios primordiais</span> (20) é separada em duas. O
+            artigo nunca fecha uma legenda: em “Quatro dos guardas” o corte cai antes de{' '}
+            <span className="font-mono">dos</span>, não depois.
           </p>
         </PreferenceSection>
         <PreferenceSection title="Tempo na tela">

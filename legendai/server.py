@@ -163,8 +163,8 @@ class LegendApi:
         for key in string_fields:
             if key in raw:
                 setattr(self.settings, key, str(raw[key]))
-        if "small_words" in raw and isinstance(raw["small_words"], list):
-            self.settings.small_words = [str(word) for word in raw["small_words"]]
+        if "linking_words" in raw and isinstance(raw["linking_words"], list):
+            self.settings.linking_words = [str(word) for word in raw["linking_words"]]
 
         self.settings.save()
         return self.settings_data()

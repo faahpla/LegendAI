@@ -57,7 +57,7 @@ export type EngineSettings = {
   keep_characters: string
   check_alignment: boolean
   min_alignment_score: number
-  small_words: string[]
+  linking_words: string[]
 }
 
 export const fallbackSettings: EngineSettings = {
@@ -80,5 +80,5 @@ export const fallbackSettings: EngineSettings = {
   keep_characters: '":',
   check_alignment: true,
   min_alignment_score: 0.35,
-  small_words: []
+  linking_words: []
 }

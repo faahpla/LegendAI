@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from legendai.aligner import AlignmentReport
 from legendai.engine import LegendEngine, Word
 from legendai.pipeline import AlignmentMismatchError, _verify_alignment
-from legendai.settings import Settings
+from legendai.settings import DEFAULT_LINKING_WORDS, Settings
 from legendai.utils import strip_special_characters
 
 
@@ -48,10 +48,18 @@ class TestWordsPerCue(unittest.TestCase):
         )
 
     def test_two_short_words_share_the_cue(self):
-        # "Quatro dos" = 10 caracteres com o espaço, cabe em 12.
+        # "as tropas" = 9 caracteres com o espaço, cabe em 12.
+        self.assertEqual(
+            self.build("as tropas voltaram", max_words=2, max_chars=12),
+            ["as tropas", "voltaram"],
+        )
+
+    def test_article_is_not_stranded_at_the_end(self):
+        # "Quatro dos" cabe em 12 caracteres, mas deixaria "dos" pendurado no
+        # fim da legenda, longe do substantivo que ele apresenta.
         self.assertEqual(
             self.build("Quatro dos guardas", max_words=2, max_chars=12),
-            ["Quatro dos", "guardas"],
+            ["Quatro", "dos guardas"],
         )
 
     def test_two_long_words_are_broken_apart(self):
@@ -75,6 +83,76 @@ class TestWordsPerCue(unittest.TestCase):
         )
 
 
+class TestLinkingWords(unittest.TestCase):
+    """Artigos, preposições e contrações mandam no corte.
+
+    O limite de caracteres dizia sozinho onde quebrar, e quebrava no pior
+    lugar possível: "Quatro dos | guardas" deixava o artigo pendurado no fim
+    de uma legenda e o substantivo na seguinte. Quem lê recebe primeiro um
+    "dos" que não apresenta nada, e só depois descobre o quê.
+    """
+
+    def build(self, text, max_words=1, max_chars=20):
+        settings = Settings()
+        settings.max_words = max_words
+        settings.max_chars = max_chars
+        settings.min_duration = 0.0
+        settings.margin_start = settings.margin_end = 0.0
+        settings.snap_fps = 0
+        cues = LegendEngine(settings).build(make_words(words_from(text)), total_duration=60.0)
+        return [cue.text for cue in cues]
+
+    def test_no_cue_ends_with_a_linking_word(self):
+        texto = ("Ichigo despertou o Bankai no meio da batalha "
+                 "contra os inimigos do Hueco Mundo")
+        for max_words in (1, 2, 3):
+            cues = self.build(texto, max_words=max_words, max_chars=14)
+            # A última pode terminar em ligação: não existe seguinte para levá-la.
+            for cue in cues[:-1]:
+                final = cue.split()[-1].casefold()
+                self.assertNotIn(
+                    final, DEFAULT_LINKING_WORDS,
+                    f"com {max_words} palavras, '{cue}' termina em ligação",
+                )
+
+    def test_article_travels_to_the_noun_it_introduces(self):
+        self.assertEqual(
+            self.build("Quatro dos guardas caíram", max_words=2, max_chars=12),
+            ["Quatro", "dos guardas", "caíram"],
+        )
+
+    def test_two_linking_words_travel_together(self):
+        # "para a" é uma unidade só: as duas descem com "praia".
+        self.assertEqual(
+            self.build("ele vai para a praia", max_words=3, max_chars=20),
+            ["ele vai", "para a praia"],
+        )
+
+    def test_article_goes_forward_even_when_it_busts_the_limit(self):
+        # Recuar caberia em 10 caracteres ("viu o"), avançar não ("o
+        # extraordinário", 16). Vale avançar mesmo assim: uma legenda comprida
+        # incomoda menos que um artigo órfão.
+        self.assertEqual(
+            self.build("viu o extraordinário", max_chars=10),
+            ["viu", "o extraordinário"],
+        )
+
+    def test_contractions_and_accents_are_recognized(self):
+        self.assertEqual(self.build("Ichigo está no topo"),
+                         ["Ichigo", "está", "no topo"])
+        self.assertEqual(self.build("Rukia foi à guerra"),
+                         ["Rukia", "foi", "à guerra"])
+        self.assertEqual(self.build("Renji passou pelo portão"),
+                         ["Renji", "passou", "pelo portão"])
+
+    def test_limits_still_apply_between_ordinary_words(self):
+        # A regra nova não afrouxa nada onde não há ligação envolvida.
+        self.assertEqual(
+            self.build("demônios primordiais atacaram", max_words=2, max_chars=12),
+            ["demônios", "primordiais", "atacaram"],
+        )
+
+
 class TestMaxChars(unittest.TestCase):
     """max_chars aparecia na tela de configurações sem efeito nenhum."""
 
@@ -85,13 +163,13 @@ class TestMaxChars(unittest.TestCase):
         settings.margin_start = settings.margin_end = 0.0
         return LegendEngine(settings).build(make_words(spec), total_duration=9.0)
 
-    def test_small_words_group_when_they_fit(self):
+    def test_linking_words_group_when_they_fit(self):
         cues = self.build(20, [("de", 0.0, 0.2), ("Bleach", 0.3, 0.9)])
         self.assertEqual([c.text for c in cues], ["de Bleach"])
 
-    def test_small_word_leads_the_next_when_limit_is_tight(self):
-        # Nenhum par cabe em 6 caracteres, então a palavra pequena escolhe um
-        # lado: vai para frente, porque "de Bleach" se lê como uma unidade.
+    def test_linking_word_leads_the_next_when_limit_is_tight(self):
+        # Nenhum par cabe em 6 caracteres, e a preposição ainda assim vai
+        # para frente: "de Bleach" só se lê como unidade nessa ordem.
         cues = self.build(6, [
             ("Naruto", 0.0, 0.6), ("de", 0.7, 0.9), ("Bleach", 1.0, 1.6),
         ])

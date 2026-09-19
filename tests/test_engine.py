@@ -29,7 +29,7 @@ class TestGrouping(unittest.TestCase):
         cues = self.engine.build(words, total_duration=3.0)
         self.assertEqual([c.text for c in cues], ["Ichigo", "despertou", "seu", "Bankai"])
 
-    def test_small_word_groups_with_next(self):
+    def test_linking_word_opens_the_next_cue(self):
         words = make_words([
             ("de", 0.0, 0.2), ("Bleach", 0.3, 0.9),
             ("e", 1.0, 1.1), ("Naruto", 1.2, 1.9),
@@ -37,14 +37,14 @@ class TestGrouping(unittest.TestCase):
         cues = self.engine.build(words, total_duration=2.5)
         self.assertEqual([c.text for c in cues], ["de Bleach", "e Naruto"])
 
-    def test_small_word_case_insensitive_and_chained(self):
+    def test_linking_words_case_insensitive_and_chained(self):
         words = make_words([
             ("E", 0.0, 0.1), ("a", 0.2, 0.3), ("casa", 0.4, 1.0),
         ])
         cues = self.engine.build(words, total_duration=1.5)
         self.assertEqual([c.text for c in cues], ["E a casa"])
 
-    def test_trailing_small_word_attaches_to_previous(self):
+    def test_trailing_linking_word_attaches_to_previous(self):
         words = make_words([("Fugiu", 0.0, 0.6), ("sem", 0.7, 0.9)])
         cues = self.engine.build(words, total_duration=1.5)
         self.assertEqual([c.text for c in cues], ["Fugiu sem"])
