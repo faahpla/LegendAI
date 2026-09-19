@@ -74,20 +74,42 @@ class WhisperXAligner:
         progress("Carregando WhisperX (modelo de alinhamento)...", 0.10)
         import whisperx
 
-        if pasta is None:
-            # Idioma atendido por um pacote do torchaudio: quem cuida do
-            # download é o próprio whisperx.
-            self._model, self._metadata = whisperx.load_align_model(
-                language_code=self.language, device=self.device
-            )
-        else:
-            self._model, self._metadata = whisperx.load_align_model(
-                language_code=self.language,
-                device=self.device,
-                model_name=str(pasta),
-                model_cache_only=True,
-            )
+        try:
+            if pasta is None:
+                # Idioma atendido por um pacote do torchaudio: quem cuida do
+                # download é o próprio whisperx.
+                self._model, self._metadata = whisperx.load_align_model(
+                    language_code=self.language, device=self.device
+                )
+            else:
+                self._model, self._metadata = whisperx.load_align_model(
+                    language_code=self.language,
+                    device=self.device,
+                    model_name=str(pasta),
+                    model_cache_only=True,
+                )
+        except ValueError as erro:
+            raise self._com_a_causa_real(erro) from erro
         self._model = self._precisao_do_dispositivo(self._model)
+
+    @staticmethod
+    def _com_a_causa_real(erro: ValueError) -> Exception:
+        """Recupera a exceção que o whisperx escondeu.
+
+        Qualquer falha ao abrir o modelo vira, lá dentro, um `ValueError`
+        dizendo que ele "não foi encontrado no huggingface" — o que manda quem
+        lê procurar no lugar errado quando a causa é outra: um arquivo
+        truncado, um módulo que ficou de fora do empacotamento. A original é
+        impressa com `print`, que não existe no executável empacotado sem
+        console, mas continua pendurada em `__context__`.
+        """
+        causa = erro.__context__
+        if causa is None:
+            return erro
+        return RuntimeError(
+            "Não foi possível carregar o modelo de alinhamento: "
+            f"{type(causa).__name__}: {causa}"
+        )
 
     def _precisao_do_dispositivo(self, modelo):
         """Garante float32 quando a conta vai rodar na CPU.
